@@ -1,0 +1,95 @@
+{
+  "name": "@knowledge-shopping/agent",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/agent/src/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
+    "start": "electron .",
+    "dev": "concurrently -k -n TSC,ALI,ELE -c yellow,magenta,green \"npm:watch:tsc\" \"npm:watch:alias\" \"npm:start:wait\"",
+    "watch:tsc": "tsc -p tsconfig.json -w --preserveWatchOutput",
+    "watch:alias": "tsc-alias -p tsconfig.json -w",
+    "start:wait": "wait-on dist/agent/src/main.js && cross-env AGENT_DEV=1 electron .",
+    "start:server": "node dist/agent/src/server-standalone.js",
+    "start:worker": "node dist/agent/src/worker-client.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:win": "electron-builder --win",
+    "build:all": "npm run build && electron-builder --win",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "@devicefarmer/adbkit": "^3.2.0",
+    "@knowledge-shopping/shared": "file:../shared",
+    "@nut-tree-fork/nut-js": "^4.2.6",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.7.0",
+    "cors": "^2.8.5",
+    "electron-updater": "^6.8.3",
+    "express": "^4.21.2",
+    "jose": "^5.9.6",
+    "lodash": "^4.18.1",
+    "public-ip": "^6.0.2",
+    "puppeteer-core": "^24.43.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "shelljs": "^0.10.0",
+    "uid": "^2.0.2",
+    "user-agents": "^2.1.57",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/lodash": "^4.17.24",
+    "@types/node": "^20.17.10",
+    "@types/shelljs": "^0.10.0",
+    "@types/ws": "^8.5.13",
+    "concurrently": "^9.1.1",
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.1",
+    "electron-builder": "^26.8.1",
+    "tsc-alias": "^1.8.10",
+    "typescript": "^5.7.2",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.knowledge-shopping.agent",
+    "productName": "지식쇼핑 에이전트",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "web-dist",
+        "to": "web-dist",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "language": "1042"
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "https://your-update-server.example.com/releases"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: knowledge-shopping-server
+    runtime: node
+    plan: starter
+    buildCommand: |
+      cd shared && npm install && cd ..
+      cd web && npm install && npm run build && cd ..
+      cd agent && npm install && npm run build && cd ..
+    startCommand: node agent/dist/agent/src/server-standalone.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /opt/render/project/data
+    disk:
+      name: agent-data
+      mountPath: /opt/render/project/data
+      sizeGB: 1

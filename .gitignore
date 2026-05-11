@@ -1,0 +1,41 @@
+node_modules/
+dist/
+web-dist/
+.agent-data/
+*.db
+*.db-journal
+*.db-wal
+
+# Chrome user data (generated at runtime)
+myUserDataDir/
+agent/myUserDataDir/
+
+# Electron build output
+release/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Env
+.env
+.env.local
+
+# Logs
+*.log
+
+# Original project (not needed for deployment)
+vscode_project/
+
+# Platform tools (ADB binary, too large for git)
+platform-tools/
+
+# VPN template images
+resources/hi/
+resources/cool/
+resources/momo/
