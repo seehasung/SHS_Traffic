@@ -235,8 +235,7 @@ class CrawlerController {
     crawlerService.init(setting as Settings);
 
     try {
-      const isVmMode = (setting as any).vmMode === '본컴' || (setting as any).vmMode === 'VM';
-      if (!isVmMode) await crawlerService.changeIpAndMacAddress({ setting, userMe: setting });
+      await crawlerService.changeIpAndMacAddress({ setting, userMe: setting });
       if (shouldStop()) throw new Error('CANCELLED');
 
       await this._openBrowser();

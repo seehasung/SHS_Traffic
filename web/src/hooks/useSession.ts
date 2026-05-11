@@ -21,7 +21,7 @@ export function useSession() {
       }
       try {
         const { user } = await api.me();
-        setState({ phase: 'authed', user });
+        setState({ phase: 'authed', user: { ...user, role: user.role ?? 'admin' } as UserAccount });
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) {
           setState({ phase: 'guest', user: null });
@@ -30,7 +30,6 @@ export function useSession() {
         throw e;
       }
     } catch (e) {
-      // 에이전트가 안 떠있으면 setupStatus 자체가 실패. UI 가 처리.
       setState({ phase: 'guest', user: null });
     }
   }, []);
@@ -39,5 +38,8 @@ export function useSession() {
     refresh();
   }, [refresh]);
 
-  return { ...state, refresh };
+  const isAdmin = state.user?.role === 'admin';
+  const isWorker = state.user?.role === 'worker';
+
+  return { ...state, refresh, isAdmin, isWorker };
 }

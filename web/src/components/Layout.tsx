@@ -7,10 +7,11 @@ interface Props extends PropsWithChildren {
   email?: string;
   connected: boolean;
   status: 'idle' | 'running' | 'stopping';
+  isAdmin: boolean;
   onSignedOut: () => void;
 }
 
-export default function Layout({ children, email, connected, status, onSignedOut }: Props) {
+export default function Layout({ children, email, connected, status, isAdmin, onSignedOut }: Props) {
   const location = useLocation();
   const tab = (path: string, label: string) => (
     <Button
@@ -43,15 +44,17 @@ export default function Layout({ children, email, connected, status, onSignedOut
             <Heading size="sm">지식쇼핑 상위노출 콘솔</Heading>
             <Box mx={4}>
               <HStack spacing={1}>
-                {tab('/', '대시보드')}
+                {tab('/', isAdmin ? '워커 관리' : '대시보드')}
                 {tab('/knowledges', '키워드/상품')}
                 {tab('/naver-accounts', '네이버 계정')}
                 {tab('/settings', '작업 설정')}
-                {tab('/workers', '워커 관리')}
               </HStack>
             </Box>
             <Spacer />
             {statusTag}
+            <Tag colorScheme={isAdmin ? 'purple' : 'teal'} size="sm">
+              {isAdmin ? '관리자' : '워커'}
+            </Tag>
             <Text fontSize="sm" color="gray.500">
               {email}
             </Text>

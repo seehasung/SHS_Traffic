@@ -28,10 +28,13 @@ export interface SessionPayload {
   uid: number;
   email: string;
   isAdmin: boolean;
+  role: 'admin' | 'worker';
+  workerId?: string;
+  assignedGroupNames?: string[];
 }
 
 export async function issueSessionCookie(res: Response, payload: SessionPayload) {
-  const token = await new SignJWT({ ...payload })
+  const token = await new SignJWT({ ...payload } as Record<string, unknown>)
     .setProtectedHeader({ alg: JWT_ALG })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_TTL_SEC}s`)
@@ -39,7 +42,7 @@ export async function issueSessionCookie(res: Response, payload: SessionPayload)
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: false, // 로컬호스트(http) 사용 — production 에서 https 시 true
+    secure: process.env.NODE_ENV === 'production',
     maxAge: SESSION_TTL_SEC * 1000,
   });
 }
@@ -53,7 +56,14 @@ export async function readSession(req: Request): Promise<SessionPayload | null> 
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secret());
-    return { uid: payload.uid as number, email: payload.email as string, isAdmin: !!payload.isAdmin };
+    return {
+      uid: payload.uid as number,
+      email: payload.email as string,
+      isAdmin: !!payload.isAdmin,
+      role: (payload.role as 'admin' | 'worker') ?? 'admin',
+      workerId: payload.workerId as string | undefined,
+      assignedGroupNames: payload.assignedGroupNames as string[] | undefined,
+    };
   } catch {
     return null;
   }
@@ -63,6 +73,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   const session = await readSession(req);
   if (!session) return res.status(401).json({ error: 'UNAUTHORIZED' });
   (req as any).session = session;
+  next();
+}
+
+export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  const session = (req as any).session as SessionPayload | undefined;
+  if (!session || session.role !== 'admin') return res.status(403).json({ error: 'ADMIN_ONLY' });
   next();
 }
 
@@ -85,5 +101,22 @@ export function verifyLogin(email: string, password: string): SessionPayload | n
   if (!row) return null;
   const ok = bcrypt.compareSync(password, row.password_hash);
   if (!ok) return null;
-  return { uid: row.id, email: row.email, isAdmin: !!row.is_admin };
+  return { uid: row.id, email: row.email, isAdmin: !!row.is_admin, role: 'admin' };
+}
+
+export function verifyWorkerLogin(loginId: string, password: string): SessionPayload | null {
+  const row = db()
+    .prepare(`SELECT id, name, login_id, login_password, assigned_group_names FROM workers WHERE login_id = ?`)
+    .get(loginId) as { id: string; name: string; login_id: string; login_password: string; assigned_group_names: string } | undefined;
+  if (!row) return null;
+  if (row.login_password !== password) return null;
+  const assignedGroupNames: string[] = JSON.parse(row.assigned_group_names || '[]');
+  return {
+    uid: -1,
+    email: row.login_id,
+    isAdmin: false,
+    role: 'worker',
+    workerId: row.id,
+    assignedGroupNames,
+  };
 }

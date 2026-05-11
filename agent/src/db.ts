@@ -93,4 +93,13 @@ function migrate(db: Database.Database) {
     `);
     db.prepare(`UPDATE schema_version SET version = 3`).run();
   }
+
+  const current4 = (db.prepare(`SELECT version FROM schema_version`).get() as { version: number }).version;
+  if (current4 < 4) {
+    const cols = db.pragma('table_info(workers)') as { name: string }[];
+    if (!cols.some((c) => c.name === 'settings_override')) {
+      db.exec(`ALTER TABLE workers ADD COLUMN settings_override TEXT DEFAULT NULL;`);
+    }
+    db.prepare(`UPDATE schema_version SET version = 4`).run();
+  }
 }

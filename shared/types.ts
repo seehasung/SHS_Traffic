@@ -3,7 +3,6 @@
 
 export type WorkType = 'pc' | 'mobile';
 export type LogicType = 'clean' | 'detail' | 'hidden';
-export type VmMode = '본컴' | 'VM' | 'X';
 export type YN = 'Y' | 'N';
 export type PageType = 'pc' | 'mobile' | 'random';
 
@@ -12,6 +11,9 @@ export interface UserAccount {
   id: number;
   email: string;
   isAdmin: boolean;
+  role: 'admin' | 'worker';
+  workerId?: string;
+  assignedGroupNames?: string[];
   createdAt: number;
 }
 
@@ -48,9 +50,6 @@ export interface Settings {
   ipChangeType: 'phone' | 'vpn' | 'none';
   naverLoginType: 'no' | 'random' | 'inOrder' | 'fixed';
   logType: 'save-init' | 'no-save';
-  vmMode: VmMode;
-  hostIpAddress: string;
-  vmCount: number;
   logicType: LogicType;
   minWaitTime1: number;
   maxWaitTime1: number;
@@ -75,9 +74,6 @@ export const DEFAULT_SETTINGS: Settings = {
   ipChangeType: 'none',
   naverLoginType: 'no',
   logType: 'no-save',
-  vmMode: 'X',
-  hostIpAddress: '',
-  vmCount: 0,
   logicType: 'clean',
   minWaitTime1: 10,
   maxWaitTime1: 30,

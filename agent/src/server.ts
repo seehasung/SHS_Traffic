@@ -16,15 +16,18 @@ import {
   issueSessionCookie,
   readSession,
   requireAuth,
+  requireAdmin,
   verifyLogin,
+  verifyWorkerLogin,
 } from './auth';
+import type { SessionPayload } from './auth';
 import { keywordGroupsRepo, knowledgesRepo, naverAccountsRepo, settingsRepo, logsRepo, workersRepo } from './repos';
 import { runner } from './runner';
 import { staticWebDir } from './paths';
 
 declare module 'express-serve-static-core' {
   interface Request {
-    session?: { uid: number; email: string; isAdmin: boolean };
+    session?: SessionPayload;
   }
 }
 
@@ -100,7 +103,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
 
   app.post(API.login, async (req, res) => {
     const { email, password } = req.body ?? {};
-    const session = verifyLogin(email, password);
+    const session = verifyLogin(email, password) ?? verifyWorkerLogin(email, password);
     if (!session) return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
     await issueSessionCookie(res, session);
     res.json({ ok: true, user: session });
@@ -114,15 +117,21 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   app.get(API.me, async (req, res) => {
     const session = await readSession(req);
     if (!session) return res.status(401).json({ error: 'UNAUTHORIZED' });
+    if (session.role === 'worker' && session.workerId) {
+      const worker = workersRepo.list().find((w) => w.id === session.workerId);
+      if (worker) {
+        session.assignedGroupNames = worker.assignedGroupNames;
+      }
+    }
     res.json({ user: session });
   });
 
   app.use('/api', requireAuth);
 
-  // ──────────────── workers ────────────────
-  app.get(API.workers, (_req, res) => res.json({ items: workersRepo.list() }));
-  app.get(API.workerStatuses, (_req, res) => res.json({ statuses: getWorkerStatusList() }));
-  app.post(API.workers, (req, res) => {
+  // ──────────────── workers (관리자 전용) ────────────────
+  app.get(API.workers, requireAdmin, (_req, res) => res.json({ items: workersRepo.list() }));
+  app.get(API.workerStatuses, requireAdmin, (_req, res) => res.json({ statuses: getWorkerStatusList() }));
+  app.post(API.workers, requireAdmin, (req, res) => {
     const { name, loginId, loginPassword } = req.body;
     if (!name || !loginId || !loginPassword) return res.status(400).json({ error: 'INVALID_INPUT' });
     try {
@@ -131,14 +140,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
       res.status(409).json({ error: 'DUPLICATE_LOGIN_ID' });
     }
   });
-  app.put('/api/workers/:id', (req, res) => {
+  app.put('/api/workers/:id', requireAdmin, (req, res) => {
     try {
       res.json({ item: workersRepo.update(req.params.id, req.body) });
     } catch (e: any) {
       res.status(404).json({ error: 'NOT_FOUND' });
     }
   });
-  app.delete('/api/workers/:id', (req, res) => {
+  app.delete('/api/workers/:id', requireAdmin, (req, res) => {
     const ws = workerSockets.get(req.params.id);
     if (ws) ws.close(4000, 'DELETED');
     workerSockets.delete(req.params.id);
@@ -148,7 +157,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   });
 
   // 워커에 시작/중지 명령 전송
-  app.post('/api/workers/:id/start', (req, res) => {
+  app.post('/api/workers/:id/start', requireAdmin, (req, res) => {
     const ws = workerSockets.get(req.params.id);
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       return res.status(400).json({ error: 'WORKER_OFFLINE' });
@@ -157,7 +166,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     ws.send(JSON.stringify(msg));
     res.json({ ok: true });
   });
-  app.post('/api/workers/:id/stop', (req, res) => {
+  app.post('/api/workers/:id/stop', requireAdmin, (req, res) => {
     const ws = workerSockets.get(req.params.id);
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       return res.status(400).json({ error: 'WORKER_OFFLINE' });
@@ -168,7 +177,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   });
 
   // ──────────────── keyword groups ────────────────
-  app.get(API.keywordGroups, (_req, res) => res.json({ items: keywordGroupsRepo.list() }));
+  app.get(API.keywordGroups, (req, res) => {
+    const session = req.session!;
+    let items = keywordGroupsRepo.list();
+    if (session.role === 'worker' && session.assignedGroupNames && session.assignedGroupNames.length > 0) {
+      items = items.filter((g) => session.assignedGroupNames!.includes(g.groupName));
+    }
+    res.json({ items });
+  });
   app.post(API.keywordGroups, (req, res) => {
     const { groupName } = req.body;
     if (!groupName) return res.status(400).json({ error: 'INVALID_INPUT' });
@@ -185,7 +201,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   });
 
   // ──────────────── knowledges ────────────────
-  app.get(API.knowledges, (_req, res) => res.json({ items: knowledgesRepo.list() }));
+  app.get(API.knowledges, (req, res) => {
+    const session = req.session!;
+    let items = knowledgesRepo.list();
+    if (session.role === 'worker' && session.assignedGroupNames && session.assignedGroupNames.length > 0) {
+      items = items.filter((k) => k.groupName && session.assignedGroupNames!.includes(k.groupName));
+    }
+    res.json({ items });
+  });
   app.post(API.knowledges, (req, res) => res.json({ item: knowledgesRepo.upsert(req.body) }));
   app.put('/api/knowledges/:id', (req, res) =>
     res.json({ item: knowledgesRepo.upsert({ ...req.body, id: req.params.id }) }),
@@ -207,8 +230,23 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   });
 
   // ──────────────── settings ────────────────
-  app.get(API.settings, (_req, res) => res.json({ settings: settingsRepo.get() }));
-  app.put(API.settings, (req, res) => res.json({ settings: settingsRepo.save(req.body) }));
+  app.get(API.settings, (req, res) => {
+    const session = req.session!;
+    const hostSettings = settingsRepo.get();
+    if (session.role === 'worker' && session.workerId) {
+      const workerOverride = workersRepo.getSettings(session.workerId);
+      return res.json({ settings: workerOverride ?? hostSettings, isDefault: !workerOverride });
+    }
+    res.json({ settings: hostSettings });
+  });
+  app.put(API.settings, (req, res) => {
+    const session = req.session!;
+    if (session.role === 'worker' && session.workerId) {
+      workersRepo.saveSettings(session.workerId, req.body);
+      return res.json({ settings: req.body });
+    }
+    res.json({ settings: settingsRepo.save(req.body) });
+  });
 
   // ──────────────── runner (로컬 실행용, 호환 유지) ────────────────
   app.get(API.runnerStatus, (_req, res) => res.json({ snapshot: runner.snapshot() }));

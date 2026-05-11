@@ -19,7 +19,6 @@ export default function App() {
   const [agentReachable, setAgentReachable] = useState<boolean | null>(null);
   const [initialLogs, setInitialLogs] = useState<LogEntry[]>([]);
 
-  // 에이전트 가용성 자체를 확인 (위 useSession 이 실패하면 여기로 표시)
   useEffect(() => {
     let cancelled = false;
     fetch('/api/auth/setup-status', { credentials: 'include' })
@@ -56,29 +55,45 @@ export default function App() {
     return <LoginPage mode="guest" onAuthed={session.refresh} />;
   }
 
-  return <Authed initialLogs={initialLogs} email={session.user?.email} onSignedOut={session.refresh} />;
+  return (
+    <Authed
+      initialLogs={initialLogs}
+      email={session.user?.email}
+      isAdmin={session.isAdmin}
+      onSignedOut={session.refresh}
+    />
+  );
 }
 
 function Authed({
   initialLogs,
   email,
+  isAdmin,
   onSignedOut,
 }: {
   initialLogs: LogEntry[];
   email?: string;
+  isAdmin: boolean;
   onSignedOut: () => void;
 }) {
   const live = useLiveStream(initialLogs);
 
   return (
     <BrowserRouter>
-      <Layout email={email} connected={live.connected} status={live.snapshot.status} onSignedOut={onSignedOut}>
+      <Layout email={email} connected={live.connected} status={live.snapshot.status} isAdmin={isAdmin} onSignedOut={onSignedOut}>
         <Routes>
-          <Route path="/" element={<DashboardPage snapshot={live.snapshot} logs={live.logs} connected={live.connected} />} />
-          <Route path="/knowledges" element={<KnowledgesPage />} />
+          <Route
+            path="/"
+            element={
+              isAdmin
+                ? <WorkersPage />
+                : <DashboardPage snapshot={live.snapshot} logs={live.logs} connected={live.connected} />
+            }
+          />
+          <Route path="/knowledges" element={<KnowledgesPage isAdmin={isAdmin} />} />
           <Route path="/naver-accounts" element={<NaverAccountsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/workers" element={<WorkersPage />} />
+          {isAdmin && <Route path="/workers" element={<WorkersPage />} />}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

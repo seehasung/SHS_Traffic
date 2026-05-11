@@ -48,6 +48,14 @@ export const workersRepo = {
   remove(id: string) {
     db().prepare(`DELETE FROM workers WHERE id = ?`).run(id);
   },
+  getSettings(workerId: string): Settings | null {
+    const row = db().prepare(`SELECT settings_override FROM workers WHERE id = ?`).get(workerId) as { settings_override: string | null } | undefined;
+    if (!row?.settings_override) return null;
+    try { return JSON.parse(row.settings_override) as Settings; } catch { return null; }
+  },
+  saveSettings(workerId: string, settings: Settings) {
+    db().prepare(`UPDATE workers SET settings_override = ? WHERE id = ?`).run(JSON.stringify(settings), workerId);
+  },
 };
 
 // ──────────────── keyword groups ────────────────

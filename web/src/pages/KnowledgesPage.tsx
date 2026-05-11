@@ -32,7 +32,7 @@ import type { Knowledge, KeywordGroup } from '@shared/types';
 import { api } from '@/api';
 import { useRef } from 'react';
 
-export default function KnowledgesPage() {
+export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }) {
   const [groups, setGroups] = useState<KeywordGroup[]>([]);
   const [selectedGroupName, setSelectedGroupName] = useState<string | null>(null);
   const [items, setItems] = useState<Knowledge[]>([]);
@@ -151,22 +151,24 @@ export default function KnowledgesPage() {
           <Text fontWeight="bold" mb={3} fontSize="sm" color="gray.600">
             그룹 목록
           </Text>
-          <HStack mb={3}>
-            <Input
-              size="sm"
-              placeholder="새 그룹명"
-              value={newGroupName}
-              onChange={(e) => setNewGroupName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addGroup()}
-            />
-            <IconButton
-              aria-label="그룹 추가"
-              icon={<FiPlus />}
-              size="sm"
-              colorScheme="blue"
-              onClick={addGroup}
-            />
-          </HStack>
+          {isAdmin && (
+            <HStack mb={3}>
+              <Input
+                size="sm"
+                placeholder="새 그룹명"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addGroup()}
+              />
+              <IconButton
+                aria-label="그룹 추가"
+                icon={<FiPlus />}
+                size="sm"
+                colorScheme="blue"
+                onClick={addGroup}
+              />
+            </HStack>
+          )}
 
           <Stack spacing={1}>
             {groups.map((g) => (
@@ -191,17 +193,19 @@ export default function KnowledgesPage() {
                   <EditablePreview w="full" />
                   <EditableInput />
                 </Editable>
-                <IconButton
-                  aria-label="그룹 삭제"
-                  icon={<FiTrash2 />}
-                  size="xs"
-                  variant="ghost"
-                  colorScheme="red"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    confirmDeleteGroup(g);
-                  }}
-                />
+                {isAdmin && (
+                  <IconButton
+                    aria-label="그룹 삭제"
+                    icon={<FiTrash2 />}
+                    size="xs"
+                    variant="ghost"
+                    colorScheme="red"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      confirmDeleteGroup(g);
+                    }}
+                  />
+                )}
               </HStack>
             ))}
             {groups.length === 0 && (
