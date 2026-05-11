@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   Box,
   Button,
@@ -33,17 +33,17 @@ import {
   Stat,
   StatLabel,
   StatNumber,
-  StatHelpText,
   SimpleGrid,
 } from '@chakra-ui/react';
 import { FiTrash2, FiPlus, FiPlay, FiSquare, FiEdit2 } from 'react-icons/fi';
-import type { Worker, WorkerStatus, KeywordGroup } from '@shared/types';
+import type { Worker, WorkerStatus, KeywordGroup, Knowledge } from '@shared/types';
 import { api } from '@/api';
 
 export default function WorkersPage() {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [statuses, setStatuses] = useState<WorkerStatus[]>([]);
   const [groups, setGroups] = useState<KeywordGroup[]>([]);
+  const [allKnowledges, setAllKnowledges] = useState<Knowledge[]>([]);
   const { isOpen: isAddOpen, onOpen: onAddOpen, onClose: onAddClose } = useDisclosure();
   const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure();
   const [addForm, setAddForm] = useState({ name: '', loginId: '', loginPassword: '' });
@@ -53,10 +53,16 @@ export default function WorkersPage() {
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
   const refresh = useCallback(async () => {
-    const [w, s, g] = await Promise.all([api.workers.list(), api.workers.statuses(), api.keywordGroups.list()]);
+    const [w, s, g, k] = await Promise.all([
+      api.workers.list(),
+      api.workers.statuses(),
+      api.keywordGroups.list(),
+      api.knowledges.list(),
+    ]);
     setWorkers(w);
     setStatuses(s);
     setGroups(g);
+    setAllKnowledges(k);
   }, []);
 
   useEffect(() => {
@@ -69,6 +75,21 @@ export default function WorkersPage() {
 
   const getStatus = (workerId: string): WorkerStatus | undefined =>
     statuses.find((s) => s.workerId === workerId);
+
+  const workerStats = useMemo(() => {
+    const result = new Map<string, { groupCount: number; productCount: number }>();
+    for (const w of workers) {
+      if (w.assignedGroupNames.length === 0) {
+        result.set(w.id, { groupCount: groups.length, productCount: allKnowledges.length });
+      } else {
+        const productCount = allKnowledges.filter(
+          (k) => k.groupName && w.assignedGroupNames.includes(k.groupName),
+        ).length;
+        result.set(w.id, { groupCount: w.assignedGroupNames.length, productCount });
+      }
+    }
+    return result;
+  }, [workers, groups, allKnowledges]);
 
   const handleAdd = async () => {
     if (!addForm.name || !addForm.loginId || !addForm.loginPassword) {
@@ -133,6 +154,14 @@ export default function WorkersPage() {
     }
   };
 
+  const productCountForEditWorkerGroup = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const g of groups) {
+      counts.set(g.groupName, allKnowledges.filter((k) => k.groupName === g.groupName).length);
+    }
+    return counts;
+  }, [groups, allKnowledges]);
+
   const onlineCount = statuses.filter((s) => s.connectionStatus === 'online').length;
   const runningCount = statuses.filter((s) => s.runnerStatus === 'running').length;
 
@@ -166,7 +195,7 @@ export default function WorkersPage() {
       </SimpleGrid>
 
       {/* 워커 목록 */}
-      <Box borderWidth="1px" borderRadius="lg" overflow="hidden">
+      <Box borderWidth="1px" borderRadius="lg" overflow="auto">
         <Table size="sm">
           <Thead bg="gray.50">
             <Tr>
@@ -178,6 +207,8 @@ export default function WorkersPage() {
               <Th>RAM</Th>
               <Th>현재 작업</Th>
               <Th>배정 그룹</Th>
+              <Th>그룹 수</Th>
+              <Th>상품 수</Th>
               <Th>진행</Th>
               <Th></Th>
             </Tr>
@@ -187,6 +218,7 @@ export default function WorkersPage() {
               const st = getStatus(w.id);
               const isOnline = st?.connectionStatus === 'online';
               const isRunning = st?.runnerStatus === 'running';
+              const stats = workerStats.get(w.id);
               return (
                 <Tr key={w.id}>
                   <Td fontWeight="medium">{w.name}</Td>
@@ -217,10 +249,16 @@ export default function WorkersPage() {
                     {st?.currentKeyword ? `${st.currentKeyword}` : '-'}
                     {st?.currentProductId ? ` / ${st.currentProductId}` : ''}
                   </Td>
-                  <Td fontSize="xs">
+                  <Td fontSize="xs" maxW="150px">
                     {w.assignedGroupNames.length > 0
                       ? w.assignedGroupNames.join(', ')
                       : <Text color="gray.400">전체</Text>}
+                  </Td>
+                  <Td fontWeight="medium" textAlign="center">
+                    <Badge colorScheme="purple">{stats?.groupCount ?? 0}</Badge>
+                  </Td>
+                  <Td fontWeight="medium" textAlign="center">
+                    <Badge colorScheme="blue">{stats?.productCount ?? 0}</Badge>
                   </Td>
                   <Td>{st?.progressCount ?? 0}</Td>
                   <Td>
@@ -240,7 +278,7 @@ export default function WorkersPage() {
             })}
             {workers.length === 0 && (
               <Tr>
-                <Td colSpan={10} textAlign="center" color="gray.500" py={6}>
+                <Td colSpan={12} textAlign="center" color="gray.500" py={6}>
                   등록된 워커가 없습니다. 워커를 추가해주세요.
                 </Td>
               </Tr>
@@ -305,11 +343,17 @@ export default function WorkersPage() {
                   onChange={(vals) => setEditForm({ ...editForm, assignedGroupNames: vals as string[] })}
                 >
                   <Stack spacing={2}>
-                    {groups.map((g) => (
-                      <Checkbox key={g.id} value={g.groupName}>
-                        {g.groupName}
-                      </Checkbox>
-                    ))}
+                    {groups.map((g) => {
+                      const pCount = productCountForEditWorkerGroup.get(g.groupName) ?? 0;
+                      return (
+                        <Checkbox key={g.id} value={g.groupName}>
+                          {g.groupName}
+                          <Text as="span" fontSize="xs" color="gray.500" ml={2}>
+                            ({pCount}개 상품)
+                          </Text>
+                        </Checkbox>
+                      );
+                    })}
                     {groups.length === 0 && (
                       <Text fontSize="sm" color="gray.400">등록된 그룹이 없습니다</Text>
                     )}

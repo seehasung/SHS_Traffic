@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box,
   Button,
@@ -7,6 +7,7 @@ import {
   HStack,
   IconButton,
   Input,
+  Select,
   Stack,
   Table,
   Tbody,
@@ -26,9 +27,11 @@ import {
   Editable,
   EditableInput,
   EditablePreview,
+  Badge,
+  Tag,
 } from '@chakra-ui/react';
 import { FiTrash2, FiPlus } from 'react-icons/fi';
-import type { Knowledge, KeywordGroup } from '@shared/types';
+import type { Knowledge, KeywordGroup, Worker } from '@shared/types';
 import { api } from '@/api';
 import { useRef } from 'react';
 
@@ -36,7 +39,10 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
   const [groups, setGroups] = useState<KeywordGroup[]>([]);
   const [selectedGroupName, setSelectedGroupName] = useState<string | null>(null);
   const [items, setItems] = useState<Knowledge[]>([]);
+  const [allKnowledges, setAllKnowledges] = useState<Knowledge[]>([]);
+  const [workers, setWorkers] = useState<Worker[]>([]);
   const [newGroupName, setNewGroupName] = useState('');
+  const [selectedWorkerForGroup, setSelectedWorkerForGroup] = useState('');
   const [draft, setDraft] = useState({ keyword: '', itemName: '' });
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'group' | 'knowledge'; id: string; label: string } | null>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -51,6 +57,7 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
 
   const refreshKnowledges = useCallback(async () => {
     const all = await api.knowledges.list();
+    setAllKnowledges(all);
     if (selectedGroupName) {
       setItems(all.filter((k) => k.groupName === selectedGroupName));
     } else {
@@ -58,13 +65,46 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
     }
   }, [selectedGroupName]);
 
+  const refreshWorkers = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const w = await api.workers.list();
+      setWorkers(w);
+    } catch { /* worker API not accessible for non-admin */ }
+  }, [isAdmin]);
+
   useEffect(() => {
     refreshGroups();
-  }, [refreshGroups]);
+    refreshWorkers();
+  }, [refreshGroups, refreshWorkers]);
 
   useEffect(() => {
     refreshKnowledges();
   }, [refreshKnowledges]);
+
+  const getWorkerForGroup = useCallback((groupName: string): Worker | undefined => {
+    return workers.find((w) => w.assignedGroupNames.includes(groupName));
+  }, [workers]);
+
+  const productCountByWorker = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const w of workers) {
+      if (w.assignedGroupNames.length === 0) {
+        counts.set(w.id, allKnowledges.length);
+      } else {
+        counts.set(w.id, allKnowledges.filter((k) => k.groupName && w.assignedGroupNames.includes(k.groupName)).length);
+      }
+    }
+    return counts;
+  }, [workers, allKnowledges]);
+
+  const productCountByGroup = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const g of groups) {
+      counts.set(g.groupName, allKnowledges.filter((k) => k.groupName === g.groupName).length);
+    }
+    return counts;
+  }, [groups, allKnowledges]);
 
   const addGroup = async () => {
     const name = newGroupName.trim();
@@ -77,7 +117,19 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
       return;
     }
     await api.keywordGroups.create(name);
+
+    if (selectedWorkerForGroup) {
+      const worker = workers.find((w) => w.id === selectedWorkerForGroup);
+      if (worker) {
+        await api.workers.update(worker.id, {
+          assignedGroupNames: [...worker.assignedGroupNames, name],
+        });
+        await refreshWorkers();
+      }
+    }
+
     setNewGroupName('');
+    setSelectedWorkerForGroup('');
     const list = await refreshGroups();
     if (!selectedGroupName && list.length > 0) {
       setSelectedGroupName(list[list.length - 1].groupName);
@@ -147,12 +199,12 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
 
       <Flex gap={4} align="stretch" minH="500px">
         {/* ── 왼쪽: 그룹 패널 ── */}
-        <Box w="240px" flexShrink={0} borderWidth="1px" borderRadius="lg" p={3}>
+        <Box w="300px" flexShrink={0} borderWidth="1px" borderRadius="lg" p={3}>
           <Text fontWeight="bold" mb={3} fontSize="sm" color="gray.600">
             그룹 목록
           </Text>
           {isAdmin && (
-            <HStack mb={3}>
+            <Stack spacing={2} mb={3}>
               <Input
                 size="sm"
                 placeholder="새 그룹명"
@@ -160,54 +212,87 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
                 onChange={(e) => setNewGroupName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && addGroup()}
               />
-              <IconButton
-                aria-label="그룹 추가"
-                icon={<FiPlus />}
+              <Select
+                size="sm"
+                placeholder="배정 워커 PC 선택 (선택사항)"
+                value={selectedWorkerForGroup}
+                onChange={(e) => setSelectedWorkerForGroup(e.target.value)}
+              >
+                {workers.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} — {productCountByWorker.get(w.id) ?? 0}개 상품 배정중
+                  </option>
+                ))}
+              </Select>
+              <Button
                 size="sm"
                 colorScheme="blue"
+                leftIcon={<FiPlus />}
                 onClick={addGroup}
-              />
-            </HStack>
+                isDisabled={!newGroupName.trim()}
+              >
+                그룹 추가
+              </Button>
+            </Stack>
           )}
 
           <Stack spacing={1}>
-            {groups.map((g) => (
-              <HStack
-                key={g.id}
-                px={2}
-                py={1.5}
-                borderRadius="md"
-                cursor="pointer"
-                bg={selectedGroupName === g.groupName ? 'blue.50' : 'transparent'}
-                borderWidth={selectedGroupName === g.groupName ? '1px' : '0'}
-                borderColor="blue.300"
-                _hover={{ bg: selectedGroupName === g.groupName ? 'blue.50' : 'gray.50' }}
-                onClick={() => setSelectedGroupName(g.groupName)}
-              >
-                <Editable
-                  flex={1}
-                  defaultValue={g.groupName}
-                  onSubmit={(val) => renameGroup(g.id, val)}
-                  fontSize="sm"
+            {groups.map((g) => {
+              const assignedWorker = getWorkerForGroup(g.groupName);
+              const pCount = productCountByGroup.get(g.groupName) ?? 0;
+              return (
+                <Box
+                  key={g.id}
+                  px={2}
+                  py={2}
+                  borderRadius="md"
+                  cursor="pointer"
+                  bg={selectedGroupName === g.groupName ? 'blue.50' : 'transparent'}
+                  borderWidth={selectedGroupName === g.groupName ? '1px' : '0'}
+                  borderColor="blue.300"
+                  _hover={{ bg: selectedGroupName === g.groupName ? 'blue.50' : 'gray.50' }}
+                  onClick={() => setSelectedGroupName(g.groupName)}
                 >
-                  <EditablePreview w="full" />
-                  <EditableInput />
-                </Editable>
-                {isAdmin && (
-                  <IconButton
-                    aria-label="그룹 삭제"
-                    icon={<FiTrash2 />}
-                    size="xs"
-                    variant="ghost"
-                    colorScheme="red"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      confirmDeleteGroup(g);
-                    }}
-                  />
-                )}
-              </HStack>
-            ))}
+                  <HStack>
+                    <Editable
+                      flex={1}
+                      defaultValue={g.groupName}
+                      onSubmit={(val) => renameGroup(g.id, val)}
+                      fontSize="sm"
+                    >
+                      <EditablePreview w="full" />
+                      <EditableInput />
+                    </Editable>
+                    {isAdmin && (
+                      <IconButton
+                        aria-label="그룹 삭제"
+                        icon={<FiTrash2 />}
+                        size="xs"
+                        variant="ghost"
+                        colorScheme="red"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          confirmDeleteGroup(g);
+                        }}
+                      />
+                    )}
+                  </HStack>
+                  <HStack mt={1} spacing={2}>
+                    <Badge fontSize="2xs" colorScheme="gray">{pCount}개 상품</Badge>
+                    {isAdmin && assignedWorker && (
+                      <Tag size="sm" colorScheme="teal" fontSize="2xs">
+                        {assignedWorker.name}
+                      </Tag>
+                    )}
+                    {isAdmin && !assignedWorker && (
+                      <Tag size="sm" colorScheme="gray" fontSize="2xs" variant="outline">
+                        미배정
+                      </Tag>
+                    )}
+                  </HStack>
+                </Box>
+              );
+            })}
             {groups.length === 0 && (
               <Text fontSize="sm" color="gray.400" textAlign="center" py={4}>
                 그룹을 추가해주세요
@@ -221,9 +306,19 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
           {selectedGroupName ? (
             <>
               <Flex justify="space-between" align="center" mb={4}>
-                <Text fontWeight="bold" fontSize="md">
-                  {selectedGroupName}
-                </Text>
+                <HStack>
+                  <Text fontWeight="bold" fontSize="md">
+                    {selectedGroupName}
+                  </Text>
+                  {isAdmin && (() => {
+                    const w = getWorkerForGroup(selectedGroupName);
+                    return w ? (
+                      <Tag size="sm" colorScheme="teal">{w.name}</Tag>
+                    ) : (
+                      <Tag size="sm" colorScheme="gray" variant="outline">미배정</Tag>
+                    );
+                  })()}
+                </HStack>
                 <Text fontSize="sm" color="gray.500">
                   {items.length}개 항목
                 </Text>
