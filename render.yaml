@@ -3,11 +3,8 @@ services:
     name: knowledge-shopping-server
     runtime: node
     plan: starter
-    buildCommand: |
-      cd shared && npm install && cd ..
-      cd web && npm install && npm run build && cd ..
-      cd agent && npm install && npm run build && cd ..
-    startCommand: node agent/dist/agent/src/server-standalone.js
+    buildCommand: npm run build
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production

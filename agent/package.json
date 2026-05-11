@@ -15,7 +15,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build:win": "electron-builder --win",
     "build:all": "npm run build && electron-builder --win",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "node -e \"try{require('electron');require('child_process').execSync('electron-builder install-app-deps',{stdio:'inherit'})}catch(e){}\""
   },
   "dependencies": {
     "@devicefarmer/adbkit": "^3.2.0",

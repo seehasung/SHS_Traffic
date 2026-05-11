@@ -1,0 +1,9 @@
+{
+  "name": "knowledge-shopping-top",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd shared && npm install --include=dev && cd ../web && npm install --include=dev && npm run build && cd ../agent && npm install --include=dev && npm run build",
+    "start": "node agent/dist/agent/src/server-standalone.js"
+  }
+}
