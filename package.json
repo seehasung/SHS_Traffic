@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "cd shared && npm install --include=dev && cd ../web && npm install --include=dev && npm run build && cd ../agent && npm install --include=dev && npm run build",
+    "build": "cd shared && npm install --include=dev && cd ../web && npm install --include=dev && npm run build && cd ../agent && npm install --include=dev && npm run build && npm rebuild better-sqlite3",
     "start": "node agent/dist/agent/src/server-standalone.js"
   }
 }
