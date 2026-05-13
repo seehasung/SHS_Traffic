@@ -293,12 +293,15 @@ class VpnService {
     this.이미지디렉토리설정(vpnType);
 
     await keyboard.pressKey(Key.LeftAlt, Key.Tab);
-    await screen.waitFor(imageResource('thumbnail.png'), 10000, 500, { confidence: 0.95 });
-    const position = await centerOf(screen.find(imageResource('thumbnail.png'), { confidence: 0.95 }));
-    await mouse.setPosition({ x: position.x + 50, y: position.y + 50 });
-    await sleep(1000);
-    await mouse.leftClick();
-    await keyboard.releaseKey(Key.LeftAlt, Key.Tab);
+    try {
+      await screen.waitFor(imageResource('thumbnail.png'), 10000, 500, { confidence: 0.95 });
+      const position = await centerOf(screen.find(imageResource('thumbnail.png'), { confidence: 0.95 }));
+      await mouse.setPosition({ x: position.x + 50, y: position.y + 50 });
+      await sleep(1000);
+      await mouse.leftClick();
+    } finally {
+      await keyboard.releaseKey(Key.LeftAlt, Key.Tab);
+    }
 
     crawlerUtil.log('VPN 프로그램 썸네일을 클릭했습니다.');
   }

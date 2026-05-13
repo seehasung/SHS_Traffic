@@ -219,9 +219,23 @@ class ImitateService {
       await crawlerUtil.goto(page, url);
 
       const pageUrl = page.url();
-      const selector = pageUrl?.includes('m.news.naver.com') ? '.r_news_drw' : '.cjs_news_a._cds_link';
-      await page.waitForSelector(selector);
-      const randomNews = sample((await page.$$(selector))?.slice(0, 3));
+      const isMobileNews = pageUrl?.includes('m.news.naver.com');
+      const candidateSelectors = isMobileNews
+        ? ['.r_news_drw', '.newsct_body a', 'a[class*="news"]']
+        : ['.cjs_news_a._cds_link', '.cjs_news_mw a', 'a[class*="cds_news"]', '.sa_text a', '#newsct a.sa_text_title', 'a[class*="_cds_link"]', '.rankingnews_list a'];
+
+      let newsElements: any[] = [];
+      for (const sel of candidateSelectors) {
+        try {
+          await page.waitForSelector(sel, { timeout: 3000 });
+          newsElements = await page.$$(sel);
+          if (newsElements.length > 0) break;
+        } catch {
+          continue;
+        }
+      }
+
+      const randomNews = sample(newsElements?.slice(0, 5));
 
       if (!randomNews) return crawlerUtil.log('랜덤 뉴스를 가져오는데 실패했습니다.');
       const randomNewsTitle = await page.evaluate((news: any) => news.innerText, randomNews);

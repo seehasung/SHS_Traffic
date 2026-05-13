@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import {
   Box,
   Button,
@@ -12,6 +12,7 @@ import {
 } from '@chakra-ui/react';
 import { WS_PATH } from '@shared/api';
 import type { LogLevel, ServerMessage } from '@shared/types';
+import { api } from '../api';
 
 interface WorkerLog {
   id: number;
@@ -45,9 +46,33 @@ export default function WorkerLogsPage() {
   const [workerList, setWorkerList] = useState<WorkerInfo[]>([]);
   const [selectedWorker, setSelectedWorker] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
+  const [loading, setLoading] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const loadInitialData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [workers, savedLogs] = await Promise.all([
+        api.workers.list().catch(() => []),
+        api.workerLogs.list(undefined, 1000).catch(() => []),
+      ]);
+      setWorkerList(workers.map((w) => ({ id: w.id, name: w.name, progressCount: 0 })));
+      setLogs(savedLogs.map((l) => ({
+        id: ++logIdCounter,
+        workerId: l.workerId,
+        workerName: l.workerName,
+        message: l.message,
+        level: l.level,
+        createdAt: l.createdAt,
+      })));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadInitialData(); }, [loadInitialData]);
 
   useEffect(() => {
     let stopped = false;
@@ -88,7 +113,7 @@ export default function WorkerLogsPage() {
             };
             setLogs((prev) => {
               const next = [...prev, newLog];
-              if (next.length > 500) next.splice(0, next.length - 500);
+              if (next.length > 3000) next.splice(0, next.length - 3000);
               return next;
             });
             setWorkerList((prev) => {
@@ -119,6 +144,16 @@ export default function WorkerLogsPage() {
     };
   }, []);
 
+  const clearLogs = useCallback(async () => {
+    if (!confirm(selectedWorker ? '선택된 워커의 로그를 삭제하시겠습니까?' : '모든 로그를 삭제하시겠습니까?')) return;
+    await api.workerLogs.clear(selectedWorker || undefined);
+    if (selectedWorker) {
+      setLogs((prev) => prev.filter((l) => l.workerId !== selectedWorker));
+    } else {
+      setLogs([]);
+    }
+  }, [selectedWorker]);
+
   useEffect(() => {
     const el = logContainerRef.current;
     if (el) {
@@ -136,6 +171,12 @@ export default function WorkerLogsPage() {
       <HStack>
         <Heading size="md">실시간 로그</Heading>
         <Badge colorScheme={connected ? 'green' : 'gray'}>{connected ? '연결됨' : '연결 끊김'}</Badge>
+        {loading && <Badge colorScheme="blue">불러오는 중...</Badge>}
+        <Box flex={1} />
+        <Button size="sm" onClick={loadInitialData} variant="outline">새로고침</Button>
+        <Button size="sm" onClick={clearLogs} colorScheme="red" variant="outline">
+          {selectedWorker ? '선택 워커 로그 삭제' : '전체 로그 삭제'}
+        </Button>
       </HStack>
 
       <Flex gap={4} align="stretch" minH="600px">

@@ -115,4 +115,21 @@ function migrate(db: Database.Database) {
     `);
     db.prepare(`UPDATE schema_version SET version = 5`).run();
   }
+
+  const current6 = (db.prepare(`SELECT version FROM schema_version`).get() as { version: number }).version;
+  if (current6 < 6) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS worker_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        worker_id TEXT NOT NULL,
+        worker_name TEXT NOT NULL,
+        message TEXT NOT NULL,
+        level TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX idx_worker_logs_worker_id ON worker_logs(worker_id);
+      CREATE INDEX idx_worker_logs_created_at ON worker_logs(created_at);
+    `);
+    db.prepare(`UPDATE schema_version SET version = 6`).run();
+  }
 }

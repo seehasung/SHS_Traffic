@@ -112,6 +112,20 @@ export const api = {
     list: () => call<{ items: LogEntry[] }>('GET', API.logs).then((r) => r.items),
     clear: () => call<{ ok: true }>('DELETE', API.logs),
   },
+  workerLogs: {
+    list: (workerId?: string, limit = 1000) => {
+      const qs = new URLSearchParams();
+      if (workerId) qs.set('workerId', workerId);
+      qs.set('limit', String(limit));
+      return call<{ items: { id: number; workerId: string; workerName: string; message: string; level: 'info' | 'warn' | 'error' | 'success'; createdAt: number }[] }>(
+        'GET', `/api/worker-logs?${qs.toString()}`,
+      ).then((r) => r.items);
+    },
+    clear: (workerId?: string) => {
+      const qs = workerId ? `?workerId=${encodeURIComponent(workerId)}` : '';
+      return call<{ ok: true }>('DELETE', `/api/worker-logs${qs}`);
+    },
+  },
 };
 
 export { ApiError };

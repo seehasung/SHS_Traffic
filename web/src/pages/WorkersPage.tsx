@@ -272,11 +272,25 @@ export default function WorkersPage() {
                   <Td>{st?.progressCount ?? 0}</Td>
                   <Td>
                     <HStack spacing={1}>
-                      {isOnline && !isRunning && (
-                        <IconButton aria-label="시작" icon={<FiPlay />} size="xs" colorScheme="green" onClick={() => handleStart(w.id)} />
-                      )}
-                      {isOnline && isRunning && (
-                        <IconButton aria-label="중지" icon={<FiSquare />} size="xs" colorScheme="orange" onClick={() => handleStop(w.id)} />
+                      {isOnline && (
+                        <>
+                          <IconButton
+                            aria-label="시작"
+                            icon={<FiPlay />}
+                            size="xs"
+                            colorScheme="green"
+                            isDisabled={isRunning}
+                            onClick={() => handleStart(w.id)}
+                          />
+                          <IconButton
+                            aria-label="중지"
+                            icon={<FiSquare />}
+                            size="xs"
+                            colorScheme="orange"
+                            isDisabled={!isRunning}
+                            onClick={() => handleStop(w.id)}
+                          />
+                        </>
                       )}
                       <IconButton aria-label="수정" icon={<FiEdit2 />} size="xs" variant="ghost" onClick={() => openEdit(w)} />
                       <IconButton aria-label="삭제" icon={<FiTrash2 />} size="xs" variant="ghost" colorScheme="red" onClick={() => handleDelete(w.id)} />

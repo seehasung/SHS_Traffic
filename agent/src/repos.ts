@@ -252,3 +252,60 @@ export const logsRepo = {
     db().prepare(`DELETE FROM logs`).run();
   },
 };
+
+// ──────────────── worker_logs ────────────────
+export interface WorkerLogRow {
+  id: number;
+  workerId: string;
+  workerName: string;
+  message: string;
+  level: LogLevel;
+  createdAt: number;
+}
+
+function rowToWorkerLog(r: any): WorkerLogRow {
+  return {
+    id: r.id,
+    workerId: r.worker_id,
+    workerName: r.worker_name,
+    message: r.message,
+    level: r.level as LogLevel,
+    createdAt: r.created_at,
+  };
+}
+
+export const workerLogsRepo = {
+  list(limit = 1000, workerId?: string): WorkerLogRow[] {
+    let rows: any[];
+    if (workerId) {
+      rows = db()
+        .prepare(`SELECT * FROM worker_logs WHERE worker_id = ? ORDER BY id DESC LIMIT ?`)
+        .all(workerId, limit) as any[];
+    } else {
+      rows = db()
+        .prepare(`SELECT * FROM worker_logs ORDER BY id DESC LIMIT ?`)
+        .all(limit) as any[];
+    }
+    return rows.reverse().map(rowToWorkerLog);
+  },
+  append(workerId: string, workerName: string, message: string, level: LogLevel): WorkerLogRow {
+    const now = Date.now();
+    const info = db()
+      .prepare(`INSERT INTO worker_logs(worker_id, worker_name, message, level, created_at) VALUES(?, ?, ?, ?, ?)`)
+      .run(workerId, workerName, message, level, now);
+    // 오래된 로그 정리: 워커별 최근 5000건만 유지
+    db().prepare(`
+      DELETE FROM worker_logs WHERE worker_id = ? AND id NOT IN (
+        SELECT id FROM worker_logs WHERE worker_id = ? ORDER BY id DESC LIMIT 5000
+      )
+    `).run(workerId, workerId);
+    return { id: Number(info.lastInsertRowid), workerId, workerName, message, level, createdAt: now };
+  },
+  clear(workerId?: string) {
+    if (workerId) {
+      db().prepare(`DELETE FROM worker_logs WHERE worker_id = ?`).run(workerId);
+    } else {
+      db().prepare(`DELETE FROM worker_logs`).run();
+    }
+  },
+};

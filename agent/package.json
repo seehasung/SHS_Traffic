@@ -25,6 +25,7 @@
     "@nut-tree-fork/nut-js": "^4.2.6",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.7.0",
+    "check-internet-connected": "^2.0.6",
     "cors": "^2.8.5",
     "electron-updater": "^6.8.3",
     "express": "^4.21.2",

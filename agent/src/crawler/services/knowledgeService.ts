@@ -131,17 +131,43 @@ class KnowledgeService {
     try {
       const isPc = !page.url().includes('msearch');
       const nextPageSelector = isPc
-        ? '[class*="pagination_btn_page"].active +a'
+        ? '[class*="pagination_btn_page"][class*="active"] + a'
         : '*[class*=paginator] a[class*=active] + *';
       await crawlerUtil.waitRandom(page, 1, 2);
-      await crawlerUtil.clickBySelector(page, nextPageSelector);
+
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await crawlerUtil.delay(1000);
+
+      await page.waitForSelector(nextPageSelector, { timeout: 5000 });
+
+      const itemsSelector = '*[class*=basicList_list_basis] > div > div';
+      const firstItemBefore = await page.evaluate((sel: string) => {
+        const items = document.querySelectorAll(sel);
+        return items[0]?.outerHTML?.substring(0, 200) || '';
+      }, itemsSelector);
+
+      await page.click(nextPageSelector);
       crawlerUtil.log('다음페이지 버튼 클릭');
-      await crawlerUtil.waitRandom(page, 2, 3);
+
+      await page.waitForFunction(
+        (sel: string, before: string) => {
+          const items = document.querySelectorAll(sel);
+          const firstNow = items[0]?.outerHTML?.substring(0, 200) || '';
+          return items.length > 0 && firstNow !== before;
+        },
+        { timeout: 15000 },
+        itemsSelector,
+        firstItemBefore,
+      ).catch(() => {});
+
+      await crawlerUtil.waitTillHTMLRendered(page);
+
       if (!isPc) {
         await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
       }
     } catch (e: any) {
       crawlerUtil.log('다음페이지 버튼 클릭 실패');
+      console.error(e);
       throw e;
     }
   }
@@ -230,22 +256,36 @@ class KnowledgeService {
     let purchaseDetailPage: Page | undefined;
     let totalShoppingDetailPage: Page | undefined;
 
-    for (let i = 0; i < 100; i++) {
-      await crawlerUtil.waitRandom(shoppingResultPage, 5, 10).catch(console.error);
+    const MAX_PAGES = 100;
+    for (let i = 0; i < MAX_PAGES; i++) {
+      if (i === 0) {
+        await crawlerUtil.waitRandom(shoppingResultPage, 5, 10).catch(console.error);
+      } else {
+        await crawlerUtil.waitRandom(shoppingResultPage, 1, 3).catch(console.error);
+      }
       await crawlerUtil.autoScroll(shoppingResultPage, '', 200, 200).catch(console.error);
       await crawlerUtil.waitTillHTMLRendered(shoppingResultPage);
 
       const itemsSelector = '*[class*=basicList_list_basis] > div > div';
       const items = await shoppingResultPage.$$(itemsSelector);
-      crawlerUtil.log(`검색 결과 아이템 ${items.length}개 발견, 상품번호 "${itemName}"을 일반 영역에서 검색합니다.`);
+      crawlerUtil.log(`[${i + 1}/${MAX_PAGES}페이지] 검색 결과 아이템 ${items.length}개 발견, 상품번호 "${itemName}"을 일반 영역에서 검색합니다.`);
       const { itemLinkElement, itemElement, itemTotalCount, itemIndex } =
         await this.findTargetInProductList(items, isMobile, itemName, false, isPlus);
 
       const isFoundTarget = !isEmpty(itemElement);
 
       if (!isFoundTarget) {
+        if (i >= MAX_PAGES - 1) {
+          crawlerUtil.log(`${MAX_PAGES}페이지까지 상품을 찾지 못했습니다. 다음 상품으로 넘어갑니다.`);
+          break;
+        }
         crawlerUtil.log('상품을 찾지 못해서 다음 페이지로 넘어가겠습니다.');
-        await this._clickNextPageInShoppingResultPage(shoppingResultPage, setting);
+        try {
+          await this._clickNextPageInShoppingResultPage(shoppingResultPage, setting);
+        } catch {
+          crawlerUtil.log('더 이상 다음 페이지가 없습니다. 다음 상품으로 넘어갑니다.');
+          break;
+        }
         continue;
       }
 

@@ -277,8 +277,16 @@ class CrawlerUtil {
       await Promise.all([elemHandle.click(), page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 })]);
       await this.wait(page, 1);
     } catch (e) {
-      this.log('링크를 클릭하여 페이지를 여는데 실패했습니다.: ' + e);
-      await page.reload({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
+      try {
+        await Promise.all([
+          elemHandle.evaluate((elem: any) => elem?.click()),
+          page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }),
+        ]);
+        await this.wait(page, 1);
+      } catch (e2) {
+        this.log('링크를 클릭하여 페이지를 여는데 실패했습니다.: ' + e2);
+        await page.reload({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
+      }
     }
   }
 

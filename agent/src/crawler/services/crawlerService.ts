@@ -1,5 +1,6 @@
 import type { Browser, Page } from 'puppeteer-core';
 import { random } from 'lodash';
+import path from 'path';
 import { NAVER_URL } from '../constants/urls';
 import { crawlerUtil } from '../utils/crawlerUtil';
 import { adbService } from './adbService';
@@ -10,6 +11,83 @@ class CrawlerService {
 
   init(setting: Partial<Settings>) {
     this.setting = setting;
+  }
+
+  async changeMacAddress(setting: Partial<Settings>): Promise<void> {
+    if (process.platform === 'darwin') {
+      crawlerUtil.log('MAC에서는 맥주소 변경을 건너뛰겠습니다.');
+      return;
+    }
+    if (setting.testMode === 'Y') {
+      crawlerUtil.log('[테스트모드] 맥주소 변경을 건너뛰겠습니다.');
+      return;
+    }
+
+    const nutjs: any = await import('@nut-tree-fork/nut-js');
+    await import('@nut-tree-fork/template-matcher' as any);
+    const { screen, mouse, keyboard, imageResource, centerOf, sleep, Key } = nutjs;
+
+    const isPackaged = !!(process as any).resourcesPath && process.env.AGENT_DEV !== '1';
+    screen.config.resourceDirectory = isPackaged
+      ? path.join((process as any).resourcesPath, 'mac-address')
+      : path.join(__dirname, '..', '..', '..', '..', '..', 'resources', 'mac-address');
+
+    crawlerUtil.log('맥주소 변경을 진행합니다. 마우스나 키보드를 건드리지 말고 기다려주세요.');
+
+    await screen.waitFor(imageResource('technitium-icon.png'), 10000, 500, { confidence: 0.95, searchMultipleScales: true } as any);
+    await mouse.setPosition(await centerOf(screen.find(imageResource('technitium-icon.png'), { confidence: 0.95, searchMultipleScales: true } as any)));
+    await sleep(1000);
+    await mouse.leftClick();
+
+    try {
+      await screen.waitFor(imageResource('ok.png'), 1000, 500, { confidence: 0.95, searchMultipleScales: true } as any);
+      await mouse.setPosition(await centerOf(screen.find(imageResource('ok.png'), { confidence: 0.95, searchMultipleScales: true } as any)));
+      await mouse.leftClick();
+    } catch (e) {
+      console.log(e);
+    }
+
+    await screen.waitFor(imageResource('thumbnail.png'), 10000, 500, { confidence: 0.95, searchMultipleScales: true } as any);
+    await mouse.setPosition(await centerOf(screen.find(imageResource('thumbnail.png'), { confidence: 0.95, searchMultipleScales: true } as any)));
+    await keyboard.pressKey(Key.Tab);
+
+    await screen.waitFor(imageResource('arrow-down.png'), 10000, 500, { confidence: 0.95, searchMultipleScales: true } as any);
+    const arrowDownPosition = await centerOf(screen.find(imageResource('arrow-down.png'), { confidence: 0.95, searchMultipleScales: true } as any));
+
+    await mouse.setPosition({ x: arrowDownPosition.x - 80, y: arrowDownPosition.y - 30 });
+    await mouse.leftClick();
+    await sleep(1000);
+
+    await mouse.setPosition({ x: arrowDownPosition.x - 260, y: arrowDownPosition.y + 55 });
+    await mouse.leftClick();
+    await sleep(1000);
+
+    await mouse.setPosition({ x: arrowDownPosition.x - 260, y: arrowDownPosition.y + 80 });
+    await mouse.leftClick();
+
+    await screen.waitFor(imageResource('ok.png'), 10000, 500, { confidence: 0.9, searchMultipleScales: true } as any);
+    await mouse.setPosition(await centerOf(screen.find(imageResource('ok.png'), { confidence: 0.9, searchMultipleScales: true } as any)));
+    await mouse.leftClick();
+
+    crawlerUtil.log('맥 주소 변경 후 인터넷이 연결될때까지 대기하겠습니다.');
+    const checkInternetConnected = (await import('check-internet-connected' as any)).default;
+
+    for (let i = 0; i < 180; i++) {
+      try {
+        await checkInternetConnected();
+        break;
+      } catch {
+        console.error('인터넷 연결 안됨');
+      }
+
+      if (i === 179) throw new Error('맥 주소 변경 후 인터넷 연결에 실패했습니다.');
+      await crawlerUtil.delay(1000);
+      console.log(`${i + 1}번째 인터넷 연결 재시도`);
+    }
+
+    await keyboard.pressKey(Key.LeftSuper, Key.Down);
+    await keyboard.releaseKey(Key.LeftSuper, Key.Down);
+    crawlerUtil.log('MAC 주소가 변경되었습니다.');
   }
 
   async naverLogin(page: Page, id: string, password: string): Promise<boolean> {
@@ -123,8 +201,11 @@ class CrawlerService {
     }
 
     if (setting.ipChangeType === 'phone') {
-      crawlerUtil.log('ADB를 통한 IP 변경을 시작합니다.');
+      crawlerUtil.log('IP변경(테더링)');
       try {
+        if (setting.macAddressChange === 'Y') {
+          await this.changeMacAddress(setting);
+        }
         await adbService.init();
         const newIp = await adbService.getChangedIp();
         if (newIp) {
@@ -140,17 +221,19 @@ class CrawlerService {
       const 서비스번호 = (setting as any).서비스번호 ?? 1;
       const 상품번호 = (setting as any).상품번호 ?? 1;
 
-      crawlerUtil.log(`VPN(${vpnType})을 통한 IP 변경을 시작합니다.`);
       try {
-        if (setting.macAddressChange === 'Y') {
-          crawlerUtil.log('MAC 주소 변경은 Technitium UI 자동화가 필요합니다. (미구현 - 스킵)');
-        }
-
         const { vpnService } = await import('./vpnService');
-        await vpnService.VPN접속해제(vpnType);
-        const newIp = await vpnService.VPN접속({ vpnType, userMe, 서비스번호, 상품번호 });
-        if (newIp) {
-          crawlerUtil.log(`VPN IP 변경 완료: ${newIp}`);
+
+        if (setting.macAddressChange === 'Y') {
+          crawlerUtil.log(`IP변경(VPN) > Mac 주소 변경 진행하겠습니다.`);
+          await vpnService.VPN접속해제(vpnType);
+          await this.changeMacAddress(setting);
+          const newIp = await vpnService.VPN접속({ vpnType, userMe, 서비스번호, 상품번호 });
+          if (newIp) crawlerUtil.log(`VPN IP 변경 완료: ${newIp}`);
+        } else {
+          crawlerUtil.log('IP변경(VPN) 진행하겠습니다.');
+          const newIp = await vpnService.핫키로IP변경(userMe);
+          if (newIp) crawlerUtil.log(`VPN IP 변경 완료: ${newIp}`);
         }
       } catch (e: any) {
         const msg = e?.message || String(e);

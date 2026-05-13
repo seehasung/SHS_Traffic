@@ -21,7 +21,7 @@ import {
   verifyWorkerLogin,
 } from './auth';
 import type { SessionPayload } from './auth';
-import { keywordGroupsRepo, knowledgesRepo, naverAccountsRepo, settingsRepo, logsRepo, workersRepo, productsRepo } from './repos';
+import { keywordGroupsRepo, knowledgesRepo, naverAccountsRepo, settingsRepo, logsRepo, workersRepo, productsRepo, workerLogsRepo } from './repos';
 import { runner } from './runner';
 import { staticWebDir } from './paths';
 
@@ -326,6 +326,19 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     res.json({ ok: true });
   });
 
+  // ──────────────── worker logs (영구 저장) ────────────────
+  app.get('/api/worker-logs', (req, res) => {
+    const workerId = (req.query.workerId as string | undefined) || undefined;
+    const limit = Math.min(parseInt((req.query.limit as string) || '1000', 10) || 1000, 5000);
+    const items = workerLogsRepo.list(limit, workerId);
+    res.json({ items });
+  });
+  app.delete('/api/worker-logs', (req, res) => {
+    const workerId = (req.query.workerId as string | undefined) || undefined;
+    workerLogsRepo.clear(workerId);
+    res.json({ ok: true });
+  });
+
   // ──────────────── 정적 파일 서빙 ────────────────
   const webDir = staticWebDir();
   if (webDir) {
@@ -459,12 +472,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
 
         if (msg.type === 'worker:log') {
           const worker = workersRepo.list().find((w) => w.id === authenticatedWorkerId);
+          const workerName = worker?.name ?? 'Unknown';
           const entry = logsRepo.append(`[워커:${authenticatedWorkerId}] ${msg.message}`, msg.level, 0);
+          workerLogsRepo.append(authenticatedWorkerId, workerName, msg.message, msg.level);
           broadcastDashboard({ type: 'log', entry });
           broadcastDashboard({
             type: 'worker:log',
             workerId: authenticatedWorkerId,
-            workerName: worker?.name ?? 'Unknown',
+            workerName,
             entry,
           });
         }
