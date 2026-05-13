@@ -105,7 +105,7 @@ export default function ProductsPage() {
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data);
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { header: 1 }) as unknown[][];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as unknown as unknown[][];
 
       const items: { productName: string; productNumber: string }[] = [];
       for (let i = 1; i < rows.length; i++) {
