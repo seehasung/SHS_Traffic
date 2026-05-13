@@ -43,7 +43,7 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedWorkerForGroup, setSelectedWorkerForGroup] = useState('');
-  const [draft, setDraft] = useState({ keyword: '', itemName: '' });
+  const [draft, setDraft] = useState({ keyword: '', itemName: '', productName: '' });
   const [productQuery, setProductQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
@@ -219,9 +219,11 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
     await api.knowledges.upsert({
       keyword: draft.keyword.trim(),
       itemName: draft.itemName.trim(),
+      purchaseName: draft.productName.trim() || productQuery.trim() || undefined,
       groupName: selectedGroupName,
     });
-    setDraft({ keyword: '', itemName: '' });
+    setDraft({ keyword: '', itemName: '', productName: '' });
+    setProductQuery('');
     refreshKnowledges();
   };
 
@@ -357,16 +359,17 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
               </Flex>
 
               <Box mb={4}>
-                <HStack>
+                <HStack spacing={2}>
                   <Input
+                    flex={1}
                     placeholder="키워드"
                     value={draft.keyword}
                     onChange={(e) => setDraft({ ...draft, keyword: e.target.value })}
                     onKeyDown={(e) => e.key === 'Enter' && addKnowledge()}
                   />
-                  <Box position="relative" flex={1}>
+                  <Box position="relative" flex={1.5} minW="200px">
                     <Input
-                      placeholder="상품명 또는 상품번호 검색"
+                      placeholder="상품명 검색 (자동완성)"
                       value={productQuery}
                       onChange={(e) => { setProductQuery(e.target.value); setShowSuggestions(true); }}
                       onFocus={() => setShowSuggestions(true)}
@@ -382,7 +385,7 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
                             cursor="pointer"
                             _hover={{ bg: 'blue.50' }}
                             onClick={() => {
-                              setDraft({ ...draft, itemName: p.productNumber });
+                              setDraft({ ...draft, itemName: p.productNumber, productName: p.productName });
                               setProductQuery(p.productName);
                               setShowSuggestions(false);
                             }}
@@ -397,7 +400,8 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
                     )}
                   </Box>
                   <Input
-                    placeholder="상품번호 (data-shp-contents-id)"
+                    flex={1}
+                    placeholder="상품번호"
                     value={draft.itemName}
                     onChange={(e) => setDraft({ ...draft, itemName: e.target.value })}
                     onKeyDown={(e) => e.key === 'Enter' && addKnowledge()}
@@ -413,6 +417,7 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
                   <Thead bg="gray.50">
                     <Tr>
                       <Th>키워드</Th>
+                      <Th>상품명</Th>
                       <Th>상품번호</Th>
                       <Th>등록일</Th>
                       <Th w="40px"></Th>
@@ -422,6 +427,7 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
                     {items.map((k) => (
                       <Tr key={k.id}>
                         <Td>{k.keyword}</Td>
+                        <Td>{k.purchaseName || '-'}</Td>
                         <Td>{k.itemName}</Td>
                         <Td>{new Date(k.createdAt).toLocaleDateString()}</Td>
                         <Td isNumeric>
@@ -438,7 +444,7 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
                     ))}
                     {items.length === 0 && (
                       <Tr>
-                        <Td colSpan={4} textAlign="center" color="gray.500" py={6}>
+                        <Td colSpan={5} textAlign="center" color="gray.500" py={6}>
                           이 그룹에 등록된 항목이 없습니다.
                         </Td>
                       </Tr>
