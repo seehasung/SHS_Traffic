@@ -105,6 +105,8 @@ export const api = {
     create: (productName: string, productNumber: string) => call<{ item: Product }>('POST', '/api/products', { productName, productNumber }).then((r) => r.item),
     update: (id: string, data: Partial<{ productName: string; productNumber: string }>) => call<{ item: Product }>('PUT', `/api/products/${id}`, data).then((r) => r.item),
     remove: (id: string) => call('DELETE', `/api/products/${id}`),
+    bulk: (items: { productName: string; productNumber: string }[]) =>
+      call<{ ok: true; created: number }>('POST', '/api/products/bulk', { items }),
   },
   logs: {
     list: () => call<{ items: LogEntry[] }>('GET', API.logs).then((r) => r.items),

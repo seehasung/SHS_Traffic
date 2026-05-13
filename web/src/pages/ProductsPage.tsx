@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Box,
   Button,
@@ -18,8 +18,10 @@ import {
   EditableInput,
   EditablePreview,
   Text,
+  Badge,
 } from '@chakra-ui/react';
-import { FiTrash2 } from 'react-icons/fi';
+import { FiTrash2, FiUpload, FiDownload } from 'react-icons/fi';
+import * as XLSX from 'xlsx';
 import type { Product } from '@shared/types';
 import { api } from '@/api';
 
@@ -27,6 +29,8 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [newName, setNewName] = useState('');
   const [newNumber, setNewNumber] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
 
   const refresh = useCallback(async () => {
@@ -93,9 +97,82 @@ export default function ProductsPage() {
     }
   };
 
+  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { header: 1 }) as unknown[][];
+
+      const items: { productName: string; productNumber: string }[] = [];
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || !row[0]) continue;
+        const productName = String(row[0]).trim();
+        const productNumber = String(row[1] ?? '').trim();
+        if (productName && productNumber) {
+          items.push({ productName, productNumber });
+        }
+      }
+
+      if (items.length === 0) {
+        toast({ title: '유효한 데이터가 없습니다. A열: 상품명, B열: 상품번호 (1행은 머릿말)', status: 'warning', position: 'top' });
+        return;
+      }
+
+      const result = await api.products.bulk(items);
+      refresh();
+      toast({ title: `${result.created}개 상품이 등록되었습니다`, status: 'success', position: 'top' });
+    } catch (err: any) {
+      toast({ title: err?.message ?? '업로드 실패', status: 'error', position: 'top' });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const downloadTemplate = () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['상품명', '상품번호'],
+      ['예시 상품', '12345678'],
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '상품');
+    XLSX.writeFile(wb, '상품_업로드_템플릿.xlsx');
+  };
+
   return (
     <Stack spacing={5}>
-      <Heading size="md">상품 관리</Heading>
+      <HStack justify="space-between">
+        <HStack>
+          <Heading size="md">상품 관리</Heading>
+          <Badge colorScheme="blue" fontSize="sm">{products.length}개</Badge>
+        </HStack>
+        <HStack>
+          <Button size="sm" leftIcon={<FiDownload />} variant="outline" onClick={downloadTemplate}>
+            템플릿 다운로드
+          </Button>
+          <Button
+            size="sm"
+            leftIcon={<FiUpload />}
+            colorScheme="green"
+            isLoading={uploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            엑셀 일괄 업로드
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            style={{ display: 'none' }}
+            onChange={handleExcelUpload}
+          />
+        </HStack>
+      </HStack>
       <Box borderWidth="1px" borderRadius="lg" p={4}>
         <HStack mb={4}>
           <Input

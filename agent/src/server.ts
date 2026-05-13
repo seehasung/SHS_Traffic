@@ -150,6 +150,20 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     productsRepo.remove(req.params.id);
     res.json({ ok: true });
   });
+  app.post(`${API.products}/bulk`, requireAdmin, (req, res) => {
+    const { items } = req.body;
+    if (!Array.isArray(items)) return res.status(400).json({ error: 'INVALID_INPUT' });
+    let created = 0;
+    for (const item of items) {
+      const name = String(item.productName ?? '').trim();
+      const number = String(item.productNumber ?? '').trim();
+      if (name && number) {
+        productsRepo.create(name, number);
+        created++;
+      }
+    }
+    res.json({ ok: true, created });
+  });
 
   // ──────────────── workers (관리자 전용) ────────────────
   app.get(API.workers, requireAdmin, (_req, res) => res.json({ items: workersRepo.list() }));
