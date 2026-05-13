@@ -1,0 +1,86 @@
+name: Release Worker (auto-update)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'agent/package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read agent version
+        id: ver
+        shell: pwsh
+        run: |
+          $pkg = Get-Content agent/package.json -Raw | ConvertFrom-Json
+          echo "version=$($pkg.version)" >> $env:GITHUB_OUTPUT
+          echo "tag=v$($pkg.version)" >> $env:GITHUB_OUTPUT
+
+      - name: Check if release already exists
+        id: check
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ steps.ver.outputs.tag }}"
+          $exists = gh release view $tag --json tagName -q .tagName 2>$null
+          if ($exists) {
+            echo "exists=true" >> $env:GITHUB_OUTPUT
+            echo "Release $tag already exists, skip"
+          } else {
+            echo "exists=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Setup Node.js
+        if: steps.check.outputs.exists != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: agent/package-lock.json
+
+      - name: Install shared
+        if: steps.check.outputs.exists != 'true'
+        working-directory: shared
+        run: npm install --include=dev
+
+      - name: Install web
+        if: steps.check.outputs.exists != 'true'
+        working-directory: web
+        run: npm install --include=dev
+
+      - name: Build web
+        if: steps.check.outputs.exists != 'true'
+        working-directory: web
+        run: npm run build
+
+      - name: Install agent
+        if: steps.check.outputs.exists != 'true'
+        working-directory: agent
+        run: npm install --include=dev
+
+      - name: Build agent (TypeScript)
+        if: steps.check.outputs.exists != 'true'
+        working-directory: agent
+        run: npm run build
+
+      - name: Build & publish to GitHub Releases
+        if: steps.check.outputs.exists != 'true'
+        working-directory: agent
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        shell: cmd
+        run: |
+          chcp 65001
+          npx electron-builder --win --config.win.signAndEditExecutable=false --publish always

@@ -441,21 +441,10 @@ function initAutoUpdater() {
 
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[AutoUpdater] 업데이트 다운로드 완료:', info.version);
-    dialog
-      .showMessageBox({
-        type: 'info',
-        title: '업데이트 완료',
-        message: `새 버전(${info.version})이 준비되었습니다.\n지금 재시작하시겠습니까?`,
-        buttons: ['재시작', '종료'],
-        defaultId: 0,
-      })
-      .then(({ response }) => {
-        if (response === 0) {
-          autoUpdater.quitAndInstall();
-        } else {
-          quitApp();
-        }
-      });
+    notifyStatus(`새 버전(${info.version}) 적용을 위해 5초 후 재시작합니다...`);
+    setTimeout(() => {
+      autoUpdater.quitAndInstall(true, true);
+    }, 5000);
   });
 
   autoUpdater.on('error', (err) => {

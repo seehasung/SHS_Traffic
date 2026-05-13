@@ -1,6 +1,6 @@
 {
   "name": "@knowledge-shopping/agent",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "SHS_Traffic 워커 에이전트",
   "author": "SHS",
@@ -107,8 +107,10 @@
       "language": "1042"
     },
     "publish": {
-      "provider": "generic",
-      "url": "https://your-update-server.example.com/releases"
+      "provider": "github",
+      "owner": "seehasung",
+      "repo": "SHS_Traffic",
+      "releaseType": "release"
     }
   }
 }
