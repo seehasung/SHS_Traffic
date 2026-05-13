@@ -102,4 +102,17 @@ function migrate(db: Database.Database) {
     }
     db.prepare(`UPDATE schema_version SET version = 4`).run();
   }
+
+  const current5 = (db.prepare(`SELECT version FROM schema_version`).get() as { version: number }).version;
+  if (current5 < 5) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS products (
+        id TEXT PRIMARY KEY,
+        product_name TEXT NOT NULL,
+        product_number TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+    `);
+    db.prepare(`UPDATE schema_version SET version = 5`).run();
+  }
 }

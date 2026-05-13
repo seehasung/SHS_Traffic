@@ -1,6 +1,6 @@
 // SQLite ↔ 도메인 객체 매핑. 한 곳에 모아두면 라우트가 매우 단순해진다.
 import { db } from './db';
-import type { Knowledge, NaverAccount, Settings, LogEntry, LogLevel, KeywordGroup, Worker } from '@shared/types';
+import type { Knowledge, NaverAccount, Settings, LogEntry, LogLevel, KeywordGroup, Worker, Product } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/types';
 import { uid } from 'uid';
 
@@ -55,6 +55,47 @@ export const workersRepo = {
   },
   saveSettings(workerId: string, settings: Settings) {
     db().prepare(`UPDATE workers SET settings_override = ? WHERE id = ?`).run(JSON.stringify(settings), workerId);
+  },
+};
+
+// ──────────────── products ────────────────
+function rowToProduct(r: any): Product {
+  return {
+    id: r.id,
+    productName: r.product_name,
+    productNumber: r.product_number,
+    createdAt: r.created_at,
+  };
+}
+
+export const productsRepo = {
+  list(): Product[] {
+    const rows = db().prepare(`SELECT * FROM products ORDER BY created_at DESC`).all() as any[];
+    return rows.map(rowToProduct);
+  },
+  create(productName: string, productNumber: string): Product {
+    const id = uid(25);
+    const now = Date.now();
+    db().prepare(`INSERT INTO products(id, product_name, product_number, created_at) VALUES(?, ?, ?, ?)`).run(id, productName, productNumber, now);
+    return { id, productName, productNumber, createdAt: now };
+  },
+  update(id: string, input: { productName?: string; productNumber?: string }): Product {
+    const existing = db().prepare(`SELECT * FROM products WHERE id = ?`).get(id) as any;
+    if (!existing) throw new Error('Product not found');
+    const name = input.productName ?? existing.product_name;
+    const number = input.productNumber ?? existing.product_number;
+    db().prepare(`UPDATE products SET product_name=?, product_number=? WHERE id=?`).run(name, number, id);
+    return rowToProduct(db().prepare(`SELECT * FROM products WHERE id = ?`).get(id));
+  },
+  remove(id: string) {
+    db().prepare(`DELETE FROM products WHERE id = ?`).run(id);
+  },
+  search(query: string): Product[] {
+    const pattern = `%${query}%`;
+    const rows = db().prepare(
+      `SELECT * FROM products WHERE product_name LIKE ? OR product_number LIKE ? ORDER BY created_at DESC`
+    ).all(pattern, pattern) as any[];
+    return rows.map(rowToProduct);
   },
 };
 

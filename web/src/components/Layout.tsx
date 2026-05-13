@@ -46,8 +46,10 @@ export default function Layout({ children, email, connected, status, isAdmin, on
               <HStack spacing={1}>
                 {tab('/', isAdmin ? '워커 관리' : '대시보드')}
                 {tab('/knowledges', '키워드/상품')}
+                {isAdmin && tab('/products', '상품 관리')}
                 {tab('/naver-accounts', '네이버 계정')}
                 {tab('/settings', '작업 설정')}
+                {isAdmin && tab('/worker-logs', '실시간 로그')}
               </HStack>
             </Box>
             <Spacer />

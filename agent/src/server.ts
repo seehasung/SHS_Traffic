@@ -21,7 +21,7 @@ import {
   verifyWorkerLogin,
 } from './auth';
 import type { SessionPayload } from './auth';
-import { keywordGroupsRepo, knowledgesRepo, naverAccountsRepo, settingsRepo, logsRepo, workersRepo } from './repos';
+import { keywordGroupsRepo, knowledgesRepo, naverAccountsRepo, settingsRepo, logsRepo, workersRepo, productsRepo } from './repos';
 import { runner } from './runner';
 import { staticWebDir } from './paths';
 
@@ -127,6 +127,29 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   });
 
   app.use('/api', requireAuth);
+
+  // ──────────────── products ────────────────
+  app.get(`${API.products}/search`, (req, res) => {
+    const q = (req.query.q as string) ?? '';
+    res.json({ items: productsRepo.search(q) });
+  });
+  app.get(API.products, requireAdmin, (_req, res) => res.json({ items: productsRepo.list() }));
+  app.post(API.products, requireAdmin, (req, res) => {
+    const { productName, productNumber } = req.body;
+    if (!productName || !productNumber) return res.status(400).json({ error: 'INVALID_INPUT' });
+    res.json({ item: productsRepo.create(productName, productNumber) });
+  });
+  app.put('/api/products/:id', requireAdmin, (req, res) => {
+    try {
+      res.json({ item: productsRepo.update(req.params.id, req.body) });
+    } catch (e: any) {
+      res.status(404).json({ error: 'NOT_FOUND' });
+    }
+  });
+  app.delete('/api/products/:id', requireAdmin, (req, res) => {
+    productsRepo.remove(req.params.id);
+    res.json({ ok: true });
+  });
 
   // ──────────────── workers (관리자 전용) ────────────────
   app.get(API.workers, requireAdmin, (_req, res) => res.json({ items: workersRepo.list() }));
@@ -402,8 +425,31 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
         }
 
         if (msg.type === 'worker:log') {
+          const worker = workersRepo.list().find((w) => w.id === authenticatedWorkerId);
           const entry = logsRepo.append(`[워커:${authenticatedWorkerId}] ${msg.message}`, msg.level, 0);
           broadcastDashboard({ type: 'log', entry });
+          broadcastDashboard({
+            type: 'worker:log',
+            workerId: authenticatedWorkerId,
+            workerName: worker?.name ?? 'Unknown',
+            entry,
+          });
+        }
+
+        if (msg.type === 'worker:request-start') {
+          const ws = workerSockets.get(authenticatedWorkerId);
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            const cmd: ServerToWorkerMessage = { type: 'command:start' };
+            ws.send(JSON.stringify(cmd));
+          }
+        }
+
+        if (msg.type === 'worker:request-stop') {
+          const ws = workerSockets.get(authenticatedWorkerId);
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            const cmd: ServerToWorkerMessage = { type: 'command:stop' };
+            ws.send(JSON.stringify(cmd));
+          }
         }
       } catch (e) {
         console.error('워커 메시지 파싱 에러:', e);

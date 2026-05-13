@@ -19,6 +19,10 @@ export const API = {
   naverAccounts: '/api/naver-accounts',
   naverAccount: (id: string) => `/api/naver-accounts/${encodeURIComponent(id)}`,
 
+  products: '/api/products',
+  product: (id: string) => `/api/products/${encodeURIComponent(id)}`,
+  workerLogs: '/api/workers/logs',
+
   workers: '/api/workers',
   worker: (id: string) => `/api/workers/${encodeURIComponent(id)}`,
   workerStatuses: '/api/workers/statuses',

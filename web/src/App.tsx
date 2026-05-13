@@ -10,6 +10,8 @@ import KnowledgesPage from '@/pages/KnowledgesPage';
 import NaverAccountsPage from '@/pages/NaverAccountsPage';
 import SettingsPage from '@/pages/SettingsPage';
 import WorkersPage from '@/pages/WorkersPage';
+import ProductsPage from '@/pages/ProductsPage';
+import WorkerLogsPage from '@/pages/WorkerLogsPage';
 import Layout from '@/components/Layout';
 import { api } from '@/api';
 import type { LogEntry } from '@shared/types';
@@ -94,6 +96,8 @@ function Authed({
           <Route path="/naver-accounts" element={<NaverAccountsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           {isAdmin && <Route path="/workers" element={<WorkersPage />} />}
+          {isAdmin && <Route path="/products" element={<ProductsPage />} />}
+          {isAdmin && <Route path="/worker-logs" element={<WorkerLogsPage />} />}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

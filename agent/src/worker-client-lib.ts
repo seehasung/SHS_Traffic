@@ -32,6 +32,22 @@ export class WorkerClient extends EventEmitter {
     this.options = options;
   }
 
+  getKnowledges(): Knowledge[] {
+    return this.knowledges;
+  }
+
+  requestStart() {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'worker:request-start' }));
+    }
+  }
+
+  requestStop() {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'worker:request-stop' }));
+    }
+  }
+
   async start() {
     console.log(`[Worker] 서버에 연결 시도: ${this.options.serverUrl}`);
     this.connect();
@@ -123,6 +139,7 @@ export class WorkerClient extends EventEmitter {
         this.settings = msg.settings;
         this.knowledges = msg.knowledges;
         this.naverAccounts = msg.naverAccounts;
+        this.emit('knowledges', this.knowledges);
         break;
     }
   }
@@ -137,6 +154,7 @@ export class WorkerClient extends EventEmitter {
     this.isRunning = true;
     this.isStopping = false;
     this.progressCount = 0;
+    this.emit('runner-status', 'running');
 
     crawlerUtil.setLogger((message: string) => {
       this.currentTask = message.slice(0, 80);
@@ -166,17 +184,20 @@ export class WorkerClient extends EventEmitter {
       this.currentKeyword = null;
       this.currentProductId = null;
       this.progressCount++;
+      this.emit('runner-status', 'idle');
     }
   }
 
   private async stopCrawler() {
     this.isStopping = true;
+    this.emit('runner-status', 'stopping');
     try {
       await crawlerController.close();
     } catch {}
   }
 
   private sendLog(message: string, level: 'info' | 'warn' | 'error' | 'success') {
+    this.emit('log', message, level);
     if (this.ws?.readyState !== WebSocket.OPEN) return;
     const msg: WorkerMessage = { type: 'worker:log', message, level };
     this.ws.send(JSON.stringify(msg));

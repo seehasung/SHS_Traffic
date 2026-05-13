@@ -11,6 +11,7 @@ import type {
   UserAccount,
   Worker,
   WorkerStatus,
+  Product,
 } from '@shared/types';
 
 class ApiError extends Error {
@@ -97,6 +98,13 @@ export const api = {
     start: (payload: StartJobPayload) =>
       call<{ ok: true; snapshot: RunnerSnapshot }>('POST', API.runnerStart, payload),
     stop: () => call<{ ok: true; snapshot: RunnerSnapshot }>('POST', API.runnerStop),
+  },
+  products: {
+    list: () => call<{ items: Product[] }>('GET', '/api/products').then((r) => r.items),
+    search: (q: string) => call<{ items: Product[] }>('GET', `/api/products/search?q=${encodeURIComponent(q)}`).then((r) => r.items),
+    create: (productName: string, productNumber: string) => call<{ item: Product }>('POST', '/api/products', { productName, productNumber }).then((r) => r.item),
+    update: (id: string, data: Partial<{ productName: string; productNumber: string }>) => call<{ item: Product }>('PUT', `/api/products/${id}`, data).then((r) => r.item),
+    remove: (id: string) => call('DELETE', `/api/products/${id}`),
   },
   logs: {
     list: () => call<{ items: LogEntry[] }>('GET', API.logs).then((r) => r.items),

@@ -82,6 +82,14 @@ export const DEFAULT_SETTINGS: Settings = {
   keywordShuffleControlRole: 'N',
 };
 
+/** 상품 관리용. */
+export interface Product {
+  id: string;
+  productName: string;
+  productNumber: string;
+  createdAt: number;
+}
+
 /** 워커 PC 등록 정보. */
 export interface Worker {
   id: string;
@@ -166,7 +174,8 @@ export type ServerMessage =
   | { type: 'snapshot'; snapshot: RunnerSnapshot }
   | { type: 'log:cleared' }
   | { type: 'worker:status'; status: WorkerStatus }
-  | { type: 'worker:status:all'; statuses: WorkerStatus[] };
+  | { type: 'worker:status:all'; statuses: WorkerStatus[] }
+  | { type: 'worker:log'; workerId: string; workerName: string; entry: LogEntry };
 
 export type ClientMessage = { type: 'subscribe' };
 
@@ -174,7 +183,9 @@ export type ClientMessage = { type: 'subscribe' };
 export type WorkerMessage =
   | { type: 'worker:auth'; loginId: string; loginPassword: string }
   | { type: 'worker:heartbeat'; ipAddress: string; cpuUsage: number; ramUsage: number; currentTask: string | null; currentKeyword: string | null; currentProductId: string | null; progressCount: number; runnerStatus: RunnerStatus }
-  | { type: 'worker:log'; message: string; level: LogLevel };
+  | { type: 'worker:log'; message: string; level: LogLevel }
+  | { type: 'worker:request-start' }
+  | { type: 'worker:request-stop' };
 
 /** 서버 → 워커 WebSocket 메시지. */
 export type ServerToWorkerMessage =

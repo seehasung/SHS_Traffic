@@ -82,8 +82,8 @@ function showLoginWindow() {
   }
 
   const display = screen.getPrimaryDisplay();
-  const w = 480;
-  const h = 520;
+  const w = 520;
+  const h = 650;
 
   loginWindow = new BrowserWindow({
     width: w,
@@ -95,12 +95,14 @@ function showLoginWindow() {
     minimizable: true,
     maximizable: false,
     fullscreenable: false,
+    autoHideMenuBar: true,
     title: 'SHS_Traffic',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
     },
   });
+  loginWindow.setMenu(null);
 
   const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>SHS_Traffic</title>
 <style>
@@ -113,11 +115,11 @@ function showLoginWindow() {
   label{display:block;font-size:13px;font-weight:600;margin-bottom:4px;color:#4a5568}
   input{width:100%;padding:10px 14px;border:1px solid #cbd5e0;border-radius:8px;font-size:14px;margin-bottom:16px;outline:none;transition:border .15s}
   input:focus{border-color:#3182ce;box-shadow:0 0 0 3px rgba(49,130,206,.15)}
-  button{width:100%;padding:12px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s}
-  .primary{background:#3182ce;color:#fff;margin-bottom:10px}
+  button{padding:12px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s}
+  .primary{width:100%;background:#3182ce;color:#fff;margin-bottom:10px}
   .primary:hover{background:#2b6cb0}
   .primary:disabled{background:#a0aec0;cursor:not-allowed}
-  .secondary{background:#edf2f7;color:#4a5568;border:1px solid #e2e8f0}
+  .secondary{width:100%;background:#edf2f7;color:#4a5568;border:1px solid #e2e8f0}
   .secondary:hover{background:#e2e8f0}
   .status{margin-top:16px;padding:12px;border-radius:8px;font-size:13px;text-align:center;display:none}
   .status.success{display:block;background:#c6f6d5;color:#22543d}
@@ -125,29 +127,80 @@ function showLoginWindow() {
   .status.info{display:block;background:#bee3f8;color:#2a4365}
   .divider{width:100%;border-top:1px solid #e2e8f0;margin:20px 0}
   .saved{font-size:12px;color:#718096;text-align:center;margin-top:8px}
+  .status-bar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .badge{padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600}
+  .badge.connected{background:#c6f6d5;color:#22543d}
+  .badge.disconnected{background:#fed7d7;color:#9b2c2c}
+  .badge.idle{background:#e2e8f0;color:#4a5568}
+  .badge.running{background:#bee3f8;color:#2a4365}
+  .badge.stopping{background:#fefcbf;color:#744210}
+  .btn-start{padding:6px 16px;border:none;border-radius:6px;background:#38a169;color:#fff;font-size:12px;font-weight:600;cursor:pointer}
+  .btn-stop{padding:6px 16px;border:none;border-radius:6px;background:#e53e3e;color:#fff;font-size:12px;font-weight:600;cursor:pointer}
+  .btn-disconnect{padding:6px 12px;border:1px solid #cbd5e0;border-radius:6px;background:transparent;color:#4a5568;font-size:12px;cursor:pointer;margin-left:auto}
+  .tabs{display:flex;gap:4px;margin-bottom:8px}
+  .tab{padding:6px 14px;border:none;border-radius:6px 6px 0 0;background:#edf2f7;color:#4a5568;font-size:12px;cursor:pointer}
+  .tab.active{background:#3182ce;color:#fff}
+  .tab-content{border:1px solid #e2e8f0;border-radius:0 0 8px 8px;padding:8px}
+  .log-line{padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
+  .log-time{color:#718096;margin-right:8px}
+  .log-warn{color:#ecc94b}
+  .log-error{color:#fc8181}
+  .log-success{color:#68d391}
+  .log-info{color:#e0e0e0}
+  .kw-row{display:flex;justify-content:space-between;padding:6px 8px;border-bottom:1px solid #edf2f7;font-size:13px}
+  .kw-keyword{font-weight:600;color:#2d3748}
+  .kw-product{color:#718096}
+  #dashboard-section{width:100%;max-width:460px}
 </style></head>
 <body>
   <h1>SHS_Traffic</h1>
   <p class="sub">호스트 서버에 연결하여 자동화 작업을 수행합니다</p>
 
-  <form id="form" onsubmit="return false">
-    <label>호스트 서버 주소</label>
-    <input id="serverUrl" placeholder="https://your-server.onrender.com" />
+  <div id="login-section">
+    <form id="form" onsubmit="return false">
+      <label>호스트 서버 주소</label>
+      <input id="serverUrl" placeholder="https://your-server.onrender.com" />
 
-    <label>워커 로그인 ID</label>
-    <input id="loginId" placeholder="worker1" />
+      <label>워커 로그인 ID</label>
+      <input id="loginId" placeholder="worker1" />
 
-    <label>워커 비밀번호</label>
-    <input id="loginPw" type="password" placeholder="password" />
+      <label>워커 비밀번호</label>
+      <input id="loginPw" type="password" placeholder="password" />
 
-    <button class="primary" id="connectBtn" onclick="doConnect()">호스트 서버에 연결</button>
-    <button class="secondary" onclick="openDash()">로컬 대시보드 열기</button>
+      <button class="primary" id="connectBtn" onclick="doConnect()">호스트 서버에 연결</button>
+      <button class="secondary" onclick="openDash()">로컬 대시보드 열기</button>
 
-    <div id="status" class="status"></div>
-  </form>
+      <div id="status" class="status"></div>
+    </form>
 
-  <div class="divider"></div>
-  <div class="saved" id="savedInfo"></div>
+    <div class="divider"></div>
+    <div class="saved" id="savedInfo"></div>
+  </div>
+
+  <div id="dashboard-section" style="display:none">
+    <div class="status-bar">
+      <span id="conn-status" class="badge connected">연결됨</span>
+      <span id="runner-badge" class="badge idle">대기 중</span>
+      <button id="startBtn" class="btn-start" onclick="doStart()">작업 시작</button>
+      <button id="stopBtn" class="btn-stop" onclick="doStop()" style="display:none">작업 중지</button>
+      <button class="btn-disconnect" onclick="doDisconnect()">연결 해제</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('log', this)">로그</button>
+      <button class="tab" onclick="switchTab('keywords', this)">키워드/상품</button>
+    </div>
+
+    <div id="tab-log" class="tab-content">
+      <div id="log-container" style="height:300px;overflow-y:auto;font-size:12px;font-family:monospace;padding:8px;background:#1a1a2e;color:#e0e0e0;border-radius:8px">
+      </div>
+    </div>
+
+    <div id="tab-keywords" class="tab-content" style="display:none">
+      <div id="keyword-list" style="max-height:300px;overflow-y:auto">
+      </div>
+    </div>
+  </div>
 
   <script>
     const { ipcRenderer } = require('electron');
@@ -212,22 +265,83 @@ function showLoginWindow() {
       ipcRenderer.send('open-dashboard');
     }
 
+    const logs = [];
+    const MAX_LOGS = 500;
+
     ipcRenderer.on('worker:status', (_, data) => {
       const btn = document.getElementById('connectBtn');
       if (data.type === 'connected') {
-        showStatus('호스트 서버에 성공적으로 연결되었습니다!', 'success');
-        btn.textContent = '연결됨 ✓';
-        btn.disabled = true;
+        document.getElementById('login-section').style.display = 'none';
+        document.getElementById('dashboard-section').style.display = 'block';
       } else if (data.type === 'error') {
         showStatus('연결 실패: ' + data.message, 'error');
         btn.textContent = '호스트 서버에 연결';
         btn.disabled = false;
       } else if (data.type === 'disconnected') {
-        showStatus('연결이 끊어졌습니다. 자동 재연결 시도 중...', 'info');
-        btn.textContent = '재연결 중...';
-        btn.disabled = true;
+        document.getElementById('conn-status').className = 'badge disconnected';
+        document.getElementById('conn-status').textContent = '연결 끊김';
       }
     });
+
+    ipcRenderer.on('worker:knowledges', (_, knowledges) => {
+      const list = document.getElementById('keyword-list');
+      list.innerHTML = knowledges.map(function(k) {
+        return '<div class="kw-row"><span class="kw-keyword">' + escapeHtml(k.keyword) + '</span><span class="kw-product">' + escapeHtml(k.itemName || '') + '</span></div>';
+      }).join('');
+      document.querySelectorAll('.tab')[1].textContent = '키워드/상품 (' + knowledges.length + ')';
+    });
+
+    ipcRenderer.on('worker:log-entry', (_, entry) => {
+      logs.push(entry);
+      if (logs.length > MAX_LOGS) logs.shift();
+      const container = document.getElementById('log-container');
+      const levelClass = 'log-' + (entry.level || 'info');
+      const time = new Date(entry.createdAt).toLocaleTimeString();
+      container.innerHTML += '<div class="log-line"><span class="log-time">' + time + '</span><span class="' + levelClass + '">' + escapeHtml(entry.message) + '</span></div>';
+      container.scrollTop = container.scrollHeight;
+    });
+
+    ipcRenderer.on('worker:runner-status', (_, status) => {
+      const badge = document.getElementById('runner-badge');
+      const startBtn = document.getElementById('startBtn');
+      const stopBtn = document.getElementById('stopBtn');
+      if (status === 'running') {
+        badge.className = 'badge running'; badge.textContent = '실행 중';
+        startBtn.style.display = 'none'; stopBtn.style.display = 'inline-block';
+      } else if (status === 'stopping') {
+        badge.className = 'badge stopping'; badge.textContent = '정지 중';
+        startBtn.style.display = 'none'; stopBtn.style.display = 'none';
+      } else {
+        badge.className = 'badge idle'; badge.textContent = '대기 중';
+        startBtn.style.display = 'inline-block'; stopBtn.style.display = 'none';
+      }
+    });
+
+    function doStart() { ipcRenderer.send('worker:start'); }
+    function doStop() { ipcRenderer.send('worker:stop'); }
+    function doDisconnect() {
+      ipcRenderer.send('worker:disconnect');
+      document.getElementById('login-section').style.display = 'block';
+      document.getElementById('dashboard-section').style.display = 'none';
+      document.getElementById('log-container').innerHTML = '';
+      logs.length = 0;
+      const btn = document.getElementById('connectBtn');
+      btn.textContent = '호스트 서버에 연결';
+      btn.disabled = false;
+    }
+
+    function switchTab(tabName, el) {
+      document.querySelectorAll('.tab-content').forEach(function(e) { e.style.display = 'none'; });
+      document.querySelectorAll('.tab').forEach(function(e) { e.classList.remove('active'); });
+      document.getElementById('tab-' + tabName).style.display = 'block';
+      el.classList.add('active');
+    }
+
+    function escapeHtml(str) {
+      var div = document.createElement('div');
+      div.appendChild(document.createTextNode(str));
+      return div.innerHTML;
+    }
   </script>
 </body></html>`;
 
@@ -367,6 +481,7 @@ ipcMain.on('worker:connect', async (_event, data: { serverUrl: string; loginId: 
 
     workerClient.on('connected', () => {
       loginWindow?.webContents.send('worker:status', { type: 'connected' });
+      loginWindow?.webContents.send('worker:knowledges', workerClient.getKnowledges());
       notifyStatus('호스트 서버에 연결되었습니다.');
     });
 
@@ -378,6 +493,18 @@ ipcMain.on('worker:connect', async (_event, data: { serverUrl: string; loginId: 
       loginWindow?.webContents.send('worker:status', { type: 'error', message: msg });
     });
 
+    workerClient.on('log', (msg: string, level: string) => {
+      loginWindow?.webContents.send('worker:log-entry', { message: msg, level, createdAt: Date.now() });
+    });
+
+    workerClient.on('runner-status', (status: string) => {
+      loginWindow?.webContents.send('worker:runner-status', status);
+    });
+
+    workerClient.on('knowledges', (knowledges: any[]) => {
+      loginWindow?.webContents.send('worker:knowledges', knowledges);
+    });
+
     workerClient.start();
   } catch (e: any) {
     loginWindow?.webContents.send('worker:status', { type: 'error', message: e.message });
@@ -386,6 +513,21 @@ ipcMain.on('worker:connect', async (_event, data: { serverUrl: string; loginId: 
 
 ipcMain.on('open-dashboard', () => {
   openDashboard();
+});
+
+ipcMain.on('worker:start', () => {
+  workerClient?.requestStart();
+});
+
+ipcMain.on('worker:stop', () => {
+  workerClient?.requestStop();
+});
+
+ipcMain.on('worker:disconnect', () => {
+  if (workerClient) {
+    workerClient.disconnect();
+    workerClient = null;
+  }
 });
 
 // ─── 앱 시작 ───

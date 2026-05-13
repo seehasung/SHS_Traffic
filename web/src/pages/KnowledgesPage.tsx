@@ -31,7 +31,7 @@ import {
   Tag,
 } from '@chakra-ui/react';
 import { FiTrash2, FiPlus } from 'react-icons/fi';
-import type { Knowledge, KeywordGroup, Worker } from '@shared/types';
+import type { Knowledge, KeywordGroup, Worker, Product } from '@shared/types';
 import { api } from '@/api';
 import { useRef } from 'react';
 
@@ -44,10 +44,41 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedWorkerForGroup, setSelectedWorkerForGroup] = useState('');
   const [draft, setDraft] = useState({ keyword: '', itemName: '' });
+  const [productQuery, setProductQuery] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'group' | 'knowledge'; id: string; label: string } | null>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const cancelRef = useRef<HTMLButtonElement>(null);
   const toast = useToast();
+
+  const refreshProducts = useCallback(async () => {
+    try {
+      const items = await api.products.list();
+      setAllProducts(items);
+    } catch { /* ignore */ }
+  }, []);
+
+  const suggestions = useMemo(() => {
+    if (!productQuery.trim()) return [];
+    const q = productQuery.toLowerCase();
+    return allProducts.filter((p) =>
+      p.productName.toLowerCase().includes(q) || p.productNumber.includes(q),
+    ).slice(0, 10);
+  }, [productQuery, allProducts]);
+
+  function highlightMatch(text: string, query: string) {
+    if (!query.trim()) return text;
+    const idx = text.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return text;
+    return (
+      <>
+        {text.slice(0, idx)}
+        <Box as="span" bg="yellow.200" px="1px" borderRadius="sm">{text.slice(idx, idx + query.length)}</Box>
+        {text.slice(idx + query.length)}
+      </>
+    );
+  }
 
   const refreshGroups = useCallback(async () => {
     const list = await api.keywordGroups.list();
@@ -76,7 +107,8 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
   useEffect(() => {
     refreshGroups();
     refreshWorkers();
-  }, [refreshGroups, refreshWorkers]);
+    refreshProducts();
+  }, [refreshGroups, refreshWorkers, refreshProducts]);
 
   useEffect(() => {
     refreshKnowledges();
@@ -332,6 +364,38 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
                     onChange={(e) => setDraft({ ...draft, keyword: e.target.value })}
                     onKeyDown={(e) => e.key === 'Enter' && addKnowledge()}
                   />
+                  <Box position="relative" flex={1}>
+                    <Input
+                      placeholder="상품명 또는 상품번호 검색"
+                      value={productQuery}
+                      onChange={(e) => { setProductQuery(e.target.value); setShowSuggestions(true); }}
+                      onFocus={() => setShowSuggestions(true)}
+                      onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                    />
+                    {showSuggestions && suggestions.length > 0 && (
+                      <Box position="absolute" top="100%" left={0} right={0} zIndex={20} bg="white" borderWidth="1px" borderRadius="md" shadow="lg" maxH="200px" overflowY="auto">
+                        {suggestions.map((p) => (
+                          <Box
+                            key={p.id}
+                            px={3}
+                            py={2}
+                            cursor="pointer"
+                            _hover={{ bg: 'blue.50' }}
+                            onClick={() => {
+                              setDraft({ ...draft, itemName: p.productNumber });
+                              setProductQuery(p.productName);
+                              setShowSuggestions(false);
+                            }}
+                          >
+                            <Text fontSize="sm">
+                              {highlightMatch(p.productName, productQuery)}{' '}
+                              <Text as="span" color="gray.400">({highlightMatch(p.productNumber, productQuery)})</Text>
+                            </Text>
+                          </Box>
+                        ))}
+                      </Box>
+                    )}
+                  </Box>
                   <Input
                     placeholder="상품번호 (data-shp-contents-id)"
                     value={draft.itemName}

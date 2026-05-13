@@ -77,15 +77,20 @@ export default function WorkersPage() {
     statuses.find((s) => s.workerId === workerId);
 
   const workerStats = useMemo(() => {
-    const result = new Map<string, { groupCount: number; productCount: number }>();
+    const result = new Map<string, { groupCount: number; productCount: number; keywordCount: number }>();
     for (const w of workers) {
       if (w.assignedGroupNames.length === 0) {
-        result.set(w.id, { groupCount: groups.length, productCount: allKnowledges.length });
+        result.set(w.id, { groupCount: 0, productCount: 0, keywordCount: 0 });
       } else {
-        const productCount = allKnowledges.filter(
-          (k) => k.groupName && w.assignedGroupNames.includes(k.groupName),
-        ).length;
-        result.set(w.id, { groupCount: w.assignedGroupNames.length, productCount });
+        const productIds = new Set<string>();
+        let keywordCount = 0;
+        for (const k of allKnowledges) {
+          if (k.groupName && w.assignedGroupNames.includes(k.groupName)) {
+            productIds.add(k.itemName);
+            keywordCount++;
+          }
+        }
+        result.set(w.id, { groupCount: w.assignedGroupNames.length, productCount: productIds.size, keywordCount });
       }
     }
     return result;
@@ -209,6 +214,7 @@ export default function WorkersPage() {
               <Th>배정 그룹</Th>
               <Th>그룹 수</Th>
               <Th>상품 수</Th>
+              <Th>키워드 수</Th>
               <Th>진행</Th>
               <Th></Th>
             </Tr>
@@ -260,6 +266,9 @@ export default function WorkersPage() {
                   <Td fontWeight="medium" textAlign="center">
                     <Badge colorScheme="blue">{stats?.productCount ?? 0}</Badge>
                   </Td>
+                  <Td fontWeight="medium" textAlign="center">
+                    <Badge colorScheme="orange">{stats?.keywordCount ?? 0}</Badge>
+                  </Td>
                   <Td>{st?.progressCount ?? 0}</Td>
                   <Td>
                     <HStack spacing={1}>
@@ -278,7 +287,7 @@ export default function WorkersPage() {
             })}
             {workers.length === 0 && (
               <Tr>
-                <Td colSpan={12} textAlign="center" color="gray.500" py={6}>
+                <Td colSpan={13} textAlign="center" color="gray.500" py={6}>
                   등록된 워커가 없습니다. 워커를 추가해주세요.
                 </Td>
               </Tr>
