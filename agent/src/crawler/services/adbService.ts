@@ -26,11 +26,19 @@ function getPublicIp(): Promise<string> {
 }
 
 function copyAdb(): string {
-  const projectRoot = path.resolve(__dirname, '..', '..', '..', '..');
-  const src = path.join(projectRoot, 'platform-tools');
+  const isPackaged = !!(process as any).resourcesPath && process.env.AGENT_DEV !== '1';
+  const src = isPackaged
+    ? path.join((process as any).resourcesPath, 'platform-tools')
+    : path.resolve(__dirname, '..', '..', '..', '..', '..', 'platform-tools');
+
   const dist = path.join('C:', 'platform-tools');
 
   if (fs.existsSync(path.join(dist, 'adb.exe'))) {
+    return dist;
+  }
+
+  if (!fs.existsSync(src)) {
+    crawlerUtil.log(`[ADB] platform-tools 소스 경로를 찾을 수 없습니다: ${src}`);
     return dist;
   }
 

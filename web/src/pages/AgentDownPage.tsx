@@ -11,7 +11,7 @@ export default function AgentDownPage({ onRetry }: { onRetry: () => void }) {
             <Stack spacing={2} mt={2} fontSize="sm">
               <Text>이 콘솔은 같은 PC에서 동작하는 에이전트와 통신해야 합니다.</Text>
               <Text>
-                ① 트레이에서 <b>지식쇼핑 에이전트</b> 가 실행 중인지 확인 →<br />② 실행되어 있다면 잠시 후
+                ① 트레이에서 <b>SHS_Traffic</b> 이 실행 중인지 확인 →<br />② 실행되어 있다면 잠시 후
                 재시도해 보세요.
               </Text>
             </Stack>

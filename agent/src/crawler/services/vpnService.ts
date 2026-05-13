@@ -30,12 +30,15 @@ class VpnService {
   }
 
   이미지디렉토리설정(vpnType: VpnType): void {
-    const isDev = process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development';
-    screen.config.resourceDirectory = isDev
-      ? path.join(__dirname, `../../../../resources/${vpnType}`)
-      : path.join(__dirname, `../../../resources/${vpnType}`);
+    const isPackaged = !!(process as any).resourcesPath && process.env.AGENT_DEV !== '1';
+
+    if (isPackaged) {
+      screen.config.resourceDirectory = path.join((process as any).resourcesPath, vpnType);
+    } else {
+      screen.config.resourceDirectory = path.join(__dirname, '..', '..', '..', '..', '..', 'resources', vpnType);
+    }
     crawlerUtil.log(
-      `[VPN] 이미지 리소스 디렉토리: ${screen.config.resourceDirectory} (NOTE: 해당 경로에 템플릿 PNG 이미지가 필요합니다)`,
+      `[VPN] 이미지 리소스 디렉토리: ${screen.config.resourceDirectory}`,
     );
   }
 

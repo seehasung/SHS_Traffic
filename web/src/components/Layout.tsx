@@ -41,7 +41,7 @@ export default function Layout({ children, email, connected, status, isAdmin, on
       <Box borderBottomWidth="1px" bg="white" position="sticky" top={0} zIndex={10}>
         <Container maxW="7xl">
           <HStack py={3}>
-            <Heading size="sm">지식쇼핑 상위노출 콘솔</Heading>
+            <Heading size="sm">SHS_Traffic</Heading>
             <Box mx={4}>
               <HStack spacing={1}>
                 {tab('/', isAdmin ? '워커 관리' : '대시보드')}

@@ -45,7 +45,7 @@ export default function LoginPage({ mode, onAuthed }: Props) {
     <Container maxW="sm" py={20}>
       <Stack spacing={6}>
         <Heading size="lg" textAlign="center">
-          지식쇼핑 상위노출 콘솔
+          SHS_Traffic
         </Heading>
         <Text fontSize="sm" color="gray.500" textAlign="center">
           {mode === 'first-run' ? '최초 관리자 계정을 만들어 주세요' : '계정으로 로그인하세요'}

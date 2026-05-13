@@ -2,6 +2,8 @@
   "name": "@knowledge-shopping/agent",
   "version": "0.1.0",
   "private": true,
+  "description": "SHS_Traffic 워커 에이전트",
+  "author": "SHS",
   "main": "dist/agent/src/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
@@ -13,8 +15,8 @@
     "start:server": "node dist/agent/src/server-standalone.js",
     "start:worker": "node dist/agent/src/worker-client.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build:win": "electron-builder --win",
-    "build:all": "npm run build && electron-builder --win",
+    "build:win": "electron-builder --win --config.win.signAndEditExecutable=false",
+    "build:all": "npm run build && npm run build:win",
     "postinstall": "node -e \"try{require('electron');require('child_process').execSync('electron-builder install-app-deps',{stdio:'inherit'})}catch(e){}\""
   },
   "dependencies": {
@@ -55,8 +57,8 @@
     "wait-on": "^8.0.1"
   },
   "build": {
-    "appId": "com.knowledge-shopping.agent",
-    "productName": "지식쇼핑 에이전트",
+    "appId": "com.shs.traffic",
+    "productName": "SHS_Traffic",
     "directories": {
       "output": "release"
     },
@@ -69,6 +71,22 @@
       {
         "from": "web-dist",
         "to": "web-dist",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources",
+        "to": ".",
+        "filter": [
+          "hi/**/*",
+          "cool/**/*",
+          "momo/**/*"
+        ]
+      },
+      {
+        "from": "../platform-tools",
+        "to": "platform-tools",
         "filter": [
           "**/*"
         ]
