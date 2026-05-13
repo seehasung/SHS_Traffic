@@ -32,14 +32,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          $ErrorActionPreference = 'Continue'
           $tag = "${{ steps.ver.outputs.tag }}"
-          $exists = gh release view $tag --json tagName -q .tagName 2>$null
-          if ($exists) {
-            echo "exists=true" >> $env:GITHUB_OUTPUT
-            echo "Release $tag already exists, skip"
+          $output = gh release view $tag --json tagName -q .tagName 2>&1
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -eq 0 -and $output) {
+            "exists=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            Write-Host "Release $tag already exists, skip"
           } else {
-            echo "exists=false" >> $env:GITHUB_OUTPUT
+            "exists=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            Write-Host "Release $tag does not exist, proceeding to build"
           }
+          exit 0
 
       - name: Setup Node.js
         if: steps.check.outputs.exists != 'true'
