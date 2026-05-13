@@ -147,8 +147,12 @@ function showLoginWindow() {
   .log-error{color:#fc8181}
   .log-success{color:#68d391}
   .log-info{color:#e0e0e0}
-  .kw-row{display:flex;justify-content:space-between;padding:6px 8px;border-bottom:1px solid #edf2f7;font-size:13px}
+  .kw-header{display:flex;padding:6px 8px;border-bottom:2px solid #e2e8f0;font-size:11px;font-weight:700;color:#718096;background:#f7fafc}
+  .kw-header span{flex:1}
+  .kw-row{display:flex;padding:6px 8px;border-bottom:1px solid #edf2f7;font-size:12px}
+  .kw-row span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .kw-keyword{font-weight:600;color:#2d3748}
+  .kw-name{color:#4a5568}
   .kw-product{color:#718096}
   #dashboard-section{width:100%;max-width:460px}
 </style></head>
@@ -285,8 +289,9 @@ function showLoginWindow() {
 
     ipcRenderer.on('worker:knowledges', (_, knowledges) => {
       const list = document.getElementById('keyword-list');
-      list.innerHTML = knowledges.map(function(k) {
-        return '<div class="kw-row"><span class="kw-keyword">' + escapeHtml(k.keyword) + '</span><span class="kw-product">' + escapeHtml(k.itemName || '') + '</span></div>';
+      var header = '<div class="kw-header"><span>키워드</span><span>상품명</span><span>상품번호</span></div>';
+      list.innerHTML = header + knowledges.map(function(k) {
+        return '<div class="kw-row"><span class="kw-keyword">' + escapeHtml(k.keyword) + '</span><span class="kw-name">' + escapeHtml(k.purchaseName || '-') + '</span><span class="kw-product">' + escapeHtml(k.itemName || '') + '</span></div>';
       }).join('');
       document.querySelectorAll('.tab')[1].textContent = '키워드/상품 (' + knowledges.length + ')';
     });

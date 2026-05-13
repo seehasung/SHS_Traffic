@@ -1,8 +1,6 @@
 import WebSocket from 'ws';
 import os from 'os';
 import { EventEmitter } from 'events';
-import { crawlerController } from './crawler/crawlerController';
-import { crawlerUtil } from './crawler/utils/crawlerUtil';
 import type { WorkerMessage, ServerToWorkerMessage, Settings, Knowledge, NaverAccount } from '@shared/types';
 
 interface WorkerClientOptions {
@@ -156,6 +154,9 @@ export class WorkerClient extends EventEmitter {
     this.progressCount = 0;
     this.emit('runner-status', 'running');
 
+    const { crawlerController } = await import('./crawler/crawlerController');
+    const { crawlerUtil } = await import('./crawler/utils/crawlerUtil');
+
     crawlerUtil.setLogger((message: string) => {
       this.currentTask = message.slice(0, 80);
       this.sendLog(message, 'info');
@@ -192,6 +193,7 @@ export class WorkerClient extends EventEmitter {
     this.isStopping = true;
     this.emit('runner-status', 'stopping');
     try {
+      const { crawlerController } = await import('./crawler/crawlerController');
       await crawlerController.close();
     } catch {}
   }
