@@ -70,6 +70,34 @@ function getWorkerStatusList(): WorkerStatus[] {
   });
 }
 
+/**
+ * 연결된 모든 워커에게 본인 그룹에 해당하는 최신 설정/키워드/계정을 push.
+ * 호스트에서 키워드/그룹/네이버계정/설정이 변경된 직후 호출.
+ */
+function broadcastConfigToAllWorkers() {
+  const allKnowledges = knowledgesRepo.list();
+  const settings = settingsRepo.get();
+  const naverAccounts = naverAccountsRepo.list();
+  for (const worker of workersRepo.list()) {
+    const ws = workerSockets.get(worker.id);
+    if (!ws || ws.readyState !== WebSocket.OPEN) continue;
+    const assignedKnowledges = worker.assignedGroupNames.length > 0
+      ? allKnowledges.filter((k) => k.groupName && worker.assignedGroupNames.includes(k.groupName))
+      : [];
+    const update: ServerToWorkerMessage = {
+      type: 'config:update',
+      settings,
+      knowledges: assignedKnowledges,
+      naverAccounts,
+    };
+    try {
+      ws.send(JSON.stringify(update));
+    } catch {
+      // ignore send failure
+    }
+  }
+}
+
 export async function startServer(options: StartServerOptions = {}): Promise<StartedServer> {
   db();
 
@@ -188,7 +216,23 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   });
   app.put('/api/workers/:id', requireAdmin, (req, res) => {
     try {
-      res.json({ item: workersRepo.update(req.params.id, req.body) });
+      const updated = workersRepo.update(req.params.id, req.body);
+      // 그룹 배정이 바뀌었을 수 있으니 연결된 워커에게 새 키워드/설정 push
+      const ws = workerSockets.get(req.params.id);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        const allKnowledges = knowledgesRepo.list();
+        const assignedKnowledges = updated.assignedGroupNames.length > 0
+          ? allKnowledges.filter((k) => k.groupName && updated.assignedGroupNames.includes(k.groupName))
+          : [];
+        const update: ServerToWorkerMessage = {
+          type: 'config:update',
+          settings: settingsRepo.get(),
+          knowledges: assignedKnowledges,
+          naverAccounts: naverAccountsRepo.list(),
+        };
+        ws.send(JSON.stringify(update));
+      }
+      res.json({ item: updated });
     } catch (e: any) {
       res.status(404).json({ error: 'NOT_FOUND' });
     }
@@ -234,12 +278,16 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   app.post(API.keywordGroups, (req, res) => {
     const { groupName } = req.body;
     if (!groupName) return res.status(400).json({ error: 'INVALID_INPUT' });
-    res.json({ item: keywordGroupsRepo.create(groupName) });
+    const item = keywordGroupsRepo.create(groupName);
+    broadcastConfigToAllWorkers();
+    res.json({ item });
   });
   app.put('/api/keyword-groups/:id', (req, res) => {
     const { groupName } = req.body;
     if (!groupName) return res.status(400).json({ error: 'INVALID_INPUT' });
-    res.json({ item: keywordGroupsRepo.update(req.params.id, groupName) });
+    const item = keywordGroupsRepo.update(req.params.id, groupName);
+    broadcastConfigToAllWorkers();
+    res.json({ item });
   });
   app.delete('/api/keyword-groups/:id', (req, res) => {
     const group = keywordGroupsRepo.list().find((g) => g.id === req.params.id);
@@ -253,6 +301,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
         }
       }
     }
+    broadcastConfigToAllWorkers();
     res.json({ ok: true });
   });
 
@@ -260,28 +309,46 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   app.get(API.knowledges, (req, res) => {
     const session = req.session!;
     let items = knowledgesRepo.list();
-    if (session.role === 'worker' && session.assignedGroupNames && session.assignedGroupNames.length > 0) {
-      items = items.filter((k) => k.groupName && session.assignedGroupNames!.includes(k.groupName));
+    if (session.role === 'worker') {
+      if (session.assignedGroupNames && session.assignedGroupNames.length > 0) {
+        items = items.filter((k) => k.groupName && session.assignedGroupNames!.includes(k.groupName));
+      } else {
+        items = [];
+      }
     }
     res.json({ items });
   });
-  app.post(API.knowledges, (req, res) => res.json({ item: knowledgesRepo.upsert(req.body) }));
-  app.put('/api/knowledges/:id', (req, res) =>
-    res.json({ item: knowledgesRepo.upsert({ ...req.body, id: req.params.id }) }),
-  );
+  app.post(API.knowledges, (req, res) => {
+    const item = knowledgesRepo.upsert(req.body);
+    broadcastConfigToAllWorkers();
+    res.json({ item });
+  });
+  app.put('/api/knowledges/:id', (req, res) => {
+    const item = knowledgesRepo.upsert({ ...req.body, id: req.params.id });
+    broadcastConfigToAllWorkers();
+    res.json({ item });
+  });
   app.delete('/api/knowledges/:id', (req, res) => {
     knowledgesRepo.remove(req.params.id);
+    broadcastConfigToAllWorkers();
     res.json({ ok: true });
   });
 
   // ──────────────── naver accounts ────────────────
   app.get(API.naverAccounts, (_req, res) => res.json({ items: naverAccountsRepo.list() }));
-  app.post(API.naverAccounts, (req, res) => res.json({ item: naverAccountsRepo.upsert(req.body) }));
-  app.put('/api/naver-accounts/:id', (req, res) =>
-    res.json({ item: naverAccountsRepo.upsert({ ...req.body, id: req.params.id }) }),
-  );
+  app.post(API.naverAccounts, (req, res) => {
+    const item = naverAccountsRepo.upsert(req.body);
+    broadcastConfigToAllWorkers();
+    res.json({ item });
+  });
+  app.put('/api/naver-accounts/:id', (req, res) => {
+    const item = naverAccountsRepo.upsert({ ...req.body, id: req.params.id });
+    broadcastConfigToAllWorkers();
+    res.json({ item });
+  });
   app.delete('/api/naver-accounts/:id', (req, res) => {
     naverAccountsRepo.remove(req.params.id);
+    broadcastConfigToAllWorkers();
     res.json({ ok: true });
   });
 
@@ -426,11 +493,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
             lastHeartbeat: Date.now(),
           });
 
-          // 배정된 그룹의 키워드, 설정, 네이버 계정 전송
+          // 배정된 그룹의 키워드만 전송 (배정된 그룹이 없으면 빈 목록)
           const allKnowledges = knowledgesRepo.list();
           const assignedKnowledges = worker.assignedGroupNames.length > 0
             ? allKnowledges.filter((k) => k.groupName && worker.assignedGroupNames.includes(k.groupName))
-            : allKnowledges;
+            : [];
 
           const ok: ServerToWorkerMessage = {
             type: 'auth:ok',
