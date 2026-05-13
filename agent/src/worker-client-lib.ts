@@ -13,6 +13,8 @@ export class WorkerClient extends EventEmitter {
   private ws: WebSocket | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private publicIpTimer: ReturnType<typeof setInterval> | null = null;
+  private publicIp: string = '';
   private options: WorkerClientOptions;
   private workerId: string | null = null;
   private settings: Settings | null = null;
@@ -32,6 +34,13 @@ export class WorkerClient extends EventEmitter {
 
   getKnowledges(): Knowledge[] {
     return this.knowledges;
+  }
+
+  /**
+   * 외부(예: IP 변경 직후)에서 공인 IP를 즉시 다시 가져오게 한다.
+   */
+  refreshPublicIpNow(): Promise<void> {
+    return this.refreshPublicIp();
   }
 
   requestStart() {
@@ -212,6 +221,7 @@ export class WorkerClient extends EventEmitter {
 
   private startHeartbeat() {
     this.stopHeartbeat();
+    this.startPublicIpRefresh();
     this.heartbeatTimer = setInterval(() => {
       this.sendHeartbeat();
     }, 10000);
@@ -222,6 +232,41 @@ export class WorkerClient extends EventEmitter {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
+    }
+    this.stopPublicIpRefresh();
+  }
+
+  /**
+   * 공인 IP를 백그라운드에서 주기적으로 새로 가져온다.
+   * VPN이 켜지면 LAN IP는 그대로지만 공인 IP가 바뀌므로,
+   * 워커 관리 화면에 정확한 (= 외부에서 보이는) IP를 표시하기 위해 사용.
+   */
+  private startPublicIpRefresh() {
+    void this.refreshPublicIp();
+    if (this.publicIpTimer) return;
+    this.publicIpTimer = setInterval(() => {
+      void this.refreshPublicIp();
+    }, 30000);
+  }
+
+  private stopPublicIpRefresh() {
+    if (this.publicIpTimer) {
+      clearInterval(this.publicIpTimer);
+      this.publicIpTimer = null;
+    }
+  }
+
+  private async refreshPublicIp(): Promise<void> {
+    try {
+      const { publicIpv4 } = await import('public-ip');
+      const ip = await publicIpv4({ timeout: 5000 } as any);
+      if (ip && ip !== this.publicIp) {
+        this.publicIp = ip;
+        // 새 IP가 잡히면 즉시 한 번 하트비트를 보내 대시보드에 빠르게 반영
+        this.sendHeartbeat();
+      }
+    } catch {
+      // 실패 시 기존 캐시 유지 (네트워크 일시 끊김 등)
     }
   }
 
@@ -240,7 +285,7 @@ export class WorkerClient extends EventEmitter {
 
     const msg: WorkerMessage = {
       type: 'worker:heartbeat',
-      ipAddress: this.getLocalIp(),
+      ipAddress: this.publicIp || this.getLocalIp(),
       cpuUsage: Math.round(cpuUsage * 10) / 10,
       ramUsage: Math.round(ramUsage * 10) / 10,
       currentTask: this.currentTask,
