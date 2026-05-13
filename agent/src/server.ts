@@ -233,7 +233,17 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     res.json({ item: keywordGroupsRepo.update(req.params.id, groupName) });
   });
   app.delete('/api/keyword-groups/:id', (req, res) => {
+    const group = keywordGroupsRepo.list().find((g) => g.id === req.params.id);
     keywordGroupsRepo.remove(req.params.id);
+    if (group) {
+      for (const w of workersRepo.list()) {
+        if (w.assignedGroupNames.includes(group.groupName)) {
+          workersRepo.update(w.id, {
+            assignedGroupNames: w.assignedGroupNames.filter((n) => n !== group.groupName),
+          });
+        }
+      }
+    }
     res.json({ ok: true });
   });
 
