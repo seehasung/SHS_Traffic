@@ -2,7 +2,6 @@ import { EventEmitter } from 'node:events';
 import type { LogEntry, LogLevel, RunnerSnapshot, StartJobPayload } from '@shared/types';
 import { INITIAL_SNAPSHOT } from '@shared/types';
 import { knowledgesRepo, naverAccountsRepo, logsRepo, settingsRepo } from './repos';
-import { crawlerController } from './crawler/crawlerController';
 
 export interface RunnerEvents {
   log: (entry: LogEntry) => void;
@@ -62,7 +61,10 @@ class Runner extends EventEmitter {
         this.log(`작업 중 오류: ${msg}`, 'error');
       }
     } finally {
-      await crawlerController.close().catch(() => {});
+      try {
+        const { crawlerController } = await import('./crawler/crawlerController');
+        await crawlerController.close();
+      } catch {}
       this.setSnap({ status: 'idle', currentStep: null });
     }
   }
@@ -82,6 +84,7 @@ class Runner extends EventEmitter {
   private async runCrawler(settings: any, knowledges: any[], accounts: any[]) {
     this.setSnap({ progressCount: 1, currentStep: '크롤러 실행 중' });
 
+    const { crawlerController } = await import('./crawler/crawlerController');
     await crawlerController.run({
       settings,
       knowledges,

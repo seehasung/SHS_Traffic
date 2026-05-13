@@ -178,7 +178,12 @@ export class WorkerClient extends EventEmitter {
         shouldStop: () => this.isStopping,
       });
     } catch (e: any) {
-      this.sendLog(`크롤러 에러: ${e.message}`, 'error');
+      const msg = e?.message || String(e);
+      if (msg === 'VPN_CONNECTION_FAILED') {
+        this.sendLog('VPN 연결 실패로 작업이 중단되었습니다. VPN 프로그램을 확인하고 다시 시작해주세요.', 'error');
+      } else {
+        this.sendLog(`크롤러 에러: ${msg}`, 'error');
+      }
     } finally {
       this.isRunning = false;
       this.currentTask = null;

@@ -25,6 +25,7 @@ interface WorkerLog {
 interface WorkerInfo {
   id: string;
   name: string;
+  progressCount: number;
 }
 
 function colorByLevel(level: LogLevel): string {
@@ -92,7 +93,18 @@ export default function WorkerLogsPage() {
             });
             setWorkerList((prev) => {
               if (prev.some((w) => w.id === msg.workerId)) return prev;
-              return [...prev, { id: msg.workerId, name: msg.workerName }];
+              return [...prev, { id: msg.workerId, name: msg.workerName, progressCount: 0 }];
+            });
+          }
+          if (msg.type === 'worker:status') {
+            const s = msg.status;
+            setWorkerList((prev) => {
+              const existing = prev.find((w) => w.id === s.workerId);
+              if (existing) {
+                if (existing.progressCount === s.progressCount) return prev;
+                return prev.map((w) => w.id === s.workerId ? { ...w, progressCount: s.progressCount } : w);
+              }
+              return [...prev, { id: s.workerId, name: s.workerName, progressCount: s.progressCount }];
             });
           }
         } catch { /* ignore */ }
@@ -119,14 +131,6 @@ export default function WorkerLogsPage() {
     return logs.filter((l) => l.workerId === selectedWorker);
   }, [logs, selectedWorker]);
 
-  const logCountByWorker = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const l of logs) {
-      counts.set(l.workerId, (counts.get(l.workerId) ?? 0) + 1);
-    }
-    return counts;
-  }, [logs]);
-
   return (
     <Stack spacing={5}>
       <HStack>
@@ -146,7 +150,6 @@ export default function WorkerLogsPage() {
             onClick={() => setSelectedWorker(null)}
           >
             전체
-            <Badge ml={2} colorScheme="gray">{logs.length}</Badge>
           </Button>
           {workerList.map((w) => (
             <Button
@@ -159,7 +162,7 @@ export default function WorkerLogsPage() {
               justifyContent="space-between"
             >
               <Text isTruncated>{w.name}</Text>
-              <Badge ml={1} colorScheme="gray">{logCountByWorker.get(w.id) ?? 0}</Badge>
+              <Badge ml={1} colorScheme="purple">{w.progressCount}회</Badge>
             </Button>
           ))}
           {workerList.length === 0 && (

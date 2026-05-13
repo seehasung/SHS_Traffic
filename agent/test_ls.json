@@ -1,0 +1,171 @@
+﻿{
+  "version": "0.1.1",
+  "name": "@knowledge-shopping/agent",
+  "dependencies": {
+    "@devicefarmer/adbkit": {
+      "version": "3.2.0",
+      "resolved": "https://registry.npmjs.org/@devicefarmer/adbkit/-/adbkit-3.2.0.tgz",
+      "overridden": false
+    },
+    "@knowledge-shopping/shared": {
+      "version": "0.1.0",
+      "resolved": "file:../../../shared",
+      "overridden": false
+    },
+    "@nut-tree-fork/nut-js": {
+      "version": "4.2.6",
+      "resolved": "https://registry.npmjs.org/@nut-tree-fork/nut-js/-/nut-js-4.2.6.tgz",
+      "overridden": false
+    },
+    "@types/bcryptjs": {
+      "version": "2.4.6",
+      "resolved": "https://registry.npmjs.org/@types/bcryptjs/-/bcryptjs-2.4.6.tgz",
+      "overridden": false
+    },
+    "@types/better-sqlite3": {
+      "version": "7.6.13",
+      "resolved": "https://registry.npmjs.org/@types/better-sqlite3/-/better-sqlite3-7.6.13.tgz",
+      "overridden": false
+    },
+    "@types/cors": {
+      "version": "2.8.19",
+      "resolved": "https://registry.npmjs.org/@types/cors/-/cors-2.8.19.tgz",
+      "overridden": false
+    },
+    "@types/express": {
+      "version": "4.17.25",
+      "resolved": "https://registry.npmjs.org/@types/express/-/express-4.17.25.tgz",
+      "overridden": false
+    },
+    "@types/lodash": {
+      "version": "4.17.24",
+      "resolved": "https://registry.npmjs.org/@types/lodash/-/lodash-4.17.24.tgz",
+      "overridden": false
+    },
+    "@types/node": {
+      "version": "20.19.40",
+      "resolved": "https://registry.npmjs.org/@types/node/-/node-20.19.40.tgz",
+      "overridden": false
+    },
+    "@types/shelljs": {
+      "version": "0.10.0",
+      "resolved": "https://registry.npmjs.org/@types/shelljs/-/shelljs-0.10.0.tgz",
+      "overridden": false
+    },
+    "@types/ws": {
+      "version": "8.18.1",
+      "resolved": "https://registry.npmjs.org/@types/ws/-/ws-8.18.1.tgz",
+      "overridden": false
+    },
+    "bcryptjs": {
+      "version": "2.4.3",
+      "resolved": "https://registry.npmjs.org/bcryptjs/-/bcryptjs-2.4.3.tgz",
+      "overridden": false
+    },
+    "better-sqlite3": {
+      "version": "11.10.0",
+      "resolved": "https://registry.npmjs.org/better-sqlite3/-/better-sqlite3-11.10.0.tgz",
+      "overridden": false
+    },
+    "concurrently": {
+      "version": "9.2.1",
+      "resolved": "https://registry.npmjs.org/concurrently/-/concurrently-9.2.1.tgz",
+      "overridden": false
+    },
+    "cors": {
+      "version": "2.8.6",
+      "resolved": "https://registry.npmjs.org/cors/-/cors-2.8.6.tgz",
+      "overridden": false
+    },
+    "cross-env": {
+      "version": "7.0.3",
+      "resolved": "https://registry.npmjs.org/cross-env/-/cross-env-7.0.3.tgz",
+      "overridden": false
+    },
+    "electron-builder": {
+      "version": "26.8.1",
+      "resolved": "https://registry.npmjs.org/electron-builder/-/electron-builder-26.8.1.tgz",
+      "overridden": false
+    },
+    "electron-updater": {
+      "version": "6.8.3",
+      "resolved": "https://registry.npmjs.org/electron-updater/-/electron-updater-6.8.3.tgz",
+      "overridden": false
+    },
+    "electron": {
+      "version": "33.4.11",
+      "resolved": "https://registry.npmjs.org/electron/-/electron-33.4.11.tgz",
+      "overridden": false
+    },
+    "express": {
+      "version": "4.22.1",
+      "resolved": "https://registry.npmjs.org/express/-/express-4.22.1.tgz",
+      "overridden": false
+    },
+    "jose": {
+      "version": "5.10.0",
+      "resolved": "https://registry.npmjs.org/jose/-/jose-5.10.0.tgz",
+      "overridden": false
+    },
+    "lodash": {
+      "version": "4.18.1",
+      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.18.1.tgz",
+      "overridden": false
+    },
+    "public-ip": {
+      "version": "6.0.2",
+      "resolved": "https://registry.npmjs.org/public-ip/-/public-ip-6.0.2.tgz",
+      "overridden": false
+    },
+    "puppeteer-core": {
+      "version": "24.43.1",
+      "resolved": "https://registry.npmjs.org/puppeteer-core/-/puppeteer-core-24.43.1.tgz",
+      "overridden": false
+    },
+    "puppeteer-extra-plugin-stealth": {
+      "version": "2.11.2",
+      "resolved": "https://registry.npmjs.org/puppeteer-extra-plugin-stealth/-/puppeteer-extra-plugin-stealth-2.11.2.tgz",
+      "overridden": false
+    },
+    "puppeteer-extra": {
+      "version": "3.3.6",
+      "resolved": "https://registry.npmjs.org/puppeteer-extra/-/puppeteer-extra-3.3.6.tgz",
+      "overridden": false
+    },
+    "shelljs": {
+      "version": "0.10.0",
+      "resolved": "https://registry.npmjs.org/shelljs/-/shelljs-0.10.0.tgz",
+      "overridden": false
+    },
+    "tsc-alias": {
+      "version": "1.8.10",
+      "resolved": "https://registry.npmjs.org/tsc-alias/-/tsc-alias-1.8.10.tgz",
+      "overridden": false
+    },
+    "typescript": {
+      "version": "5.9.3",
+      "resolved": "https://registry.npmjs.org/typescript/-/typescript-5.9.3.tgz",
+      "overridden": false
+    },
+    "uid": {
+      "version": "2.0.2",
+      "resolved": "https://registry.npmjs.org/uid/-/uid-2.0.2.tgz",
+      "overridden": false
+    },
+    "user-agents": {
+      "version": "2.1.57",
+      "resolved": "https://registry.npmjs.org/user-agents/-/user-agents-2.1.57.tgz",
+      "overridden": false
+    },
+    "wait-on": {
+      "version": "8.0.5",
+      "resolved": "https://registry.npmjs.org/wait-on/-/wait-on-8.0.5.tgz",
+      "overridden": false
+    },
+    "ws": {
+      "version": "8.20.0",
+      "resolved": "https://registry.npmjs.org/ws/-/ws-8.20.0.tgz",
+      "overridden": false
+    }
+  }
+}

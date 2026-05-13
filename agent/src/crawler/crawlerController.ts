@@ -52,7 +52,7 @@ class CrawlerController {
         await this._startTopExposureLogic(effectiveSetting, randomItem, naverAccounts, i + 1, shouldStop);
       } catch (e: any) {
         await this.close().catch(() => {});
-        if (e.message === 'CANCELLED') throw e;
+        if (e.message === 'CANCELLED' || e.message === 'VPN_CONNECTION_FAILED') throw e;
         logFn(`[상위로직 ${i + 1}번째에서 오류 발생 — 다음 사이클로 넘어갑니다] ${e.message}`);
       } finally {
         if (shouldStop()) return;
@@ -248,7 +248,7 @@ class CrawlerController {
 
       await this._imitate(shouldStop);
     } catch (e: any) {
-      if (e.message === 'CANCELLED' || e.message === 'NOT OPEN BROWSER' || e.message === 'IP CHANGE FAIL') throw e;
+      if (e.message === 'CANCELLED' || e.message === 'NOT OPEN BROWSER' || e.message === 'IP CHANGE FAIL' || e.message === 'VPN_CONNECTION_FAILED') throw e;
       crawlerUtil.log('랜덤 서핑 과정에서 오류가 발생했습니다. ' + e.message);
       crawlerUtil.log('랜덤 서핑 과정에서의 오류를 무시하고 계속 진행하겠습니다.');
     } finally {

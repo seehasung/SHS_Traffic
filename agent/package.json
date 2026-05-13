@@ -1,6 +1,6 @@
 {
   "name": "@knowledge-shopping/agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "SHS_Traffic 워커 에이전트",
   "author": "SHS",
@@ -15,7 +15,7 @@
     "start:server": "node dist/agent/src/server-standalone.js",
     "start:worker": "node dist/agent/src/worker-client.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build:win": "electron-builder --win --config.win.signAndEditExecutable=false",
+    "build:win": "chcp 65001 && electron-builder --win --config.win.signAndEditExecutable=false",
     "build:all": "npm run build && npm run build:win",
     "postinstall": "node -e \"try{require('electron');require('child_process').execSync('electron-builder install-app-deps',{stdio:'inherit'})}catch(e){}\""
   },

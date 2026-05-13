@@ -3,7 +3,6 @@ import { random } from 'lodash';
 import { NAVER_URL } from '../constants/urls';
 import { crawlerUtil } from '../utils/crawlerUtil';
 import { adbService } from './adbService';
-import { vpnService } from './vpnService';
 import type { Settings, NaverAccount } from '@shared/types';
 
 class CrawlerService {
@@ -147,14 +146,17 @@ class CrawlerService {
           crawlerUtil.log('MAC 주소 변경은 Technitium UI 자동화가 필요합니다. (미구현 - 스킵)');
         }
 
+        const { vpnService } = await import('./vpnService');
         await vpnService.VPN접속해제(vpnType);
         const newIp = await vpnService.VPN접속({ vpnType, userMe, 서비스번호, 상품번호 });
         if (newIp) {
           crawlerUtil.log(`VPN IP 변경 완료: ${newIp}`);
         }
       } catch (e: any) {
-        crawlerUtil.log('VPN IP 변경 중 오류: ' + e.message);
-        throw e;
+        const msg = e?.message || String(e);
+        crawlerUtil.log('VPN IP 변경 중 오류: ' + msg);
+        crawlerUtil.log('VPN 연결에 실패하여 작업을 중단합니다. VPN 프로그램이 실행 중인지 확인해주세요.');
+        throw new Error('VPN_CONNECTION_FAILED');
       }
     }
   }
