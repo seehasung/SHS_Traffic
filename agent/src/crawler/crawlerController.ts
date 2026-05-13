@@ -502,8 +502,17 @@ class CrawlerController {
           await p.close().catch(() => {});
         }
       }
+
+      const browserProcess = this.browser?.process();
       await this.browser?.close().catch(console.error);
-      this.browser?.disconnect();
+      try { this.browser?.disconnect(); } catch { /* ignore */ }
+
+      if (browserProcess && !browserProcess.killed) {
+        await crawlerUtil.delay(2000);
+        if (!browserProcess.killed) {
+          try { browserProcess.kill('SIGKILL'); } catch { /* ignore */ }
+        }
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -512,7 +521,7 @@ class CrawlerController {
       this.shoppingResultPage = undefined;
       this.purchaseDetailPage = undefined;
       this.browser = undefined;
-      await crawlerUtil.delay(3000);
+      await crawlerUtil.delay(5000);
       crawlerUtil.log('모든 페이지를 닫았습니다. 다음 사이클을 준비합니다.');
     }
   }

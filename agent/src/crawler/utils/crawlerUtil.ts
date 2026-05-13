@@ -3,8 +3,23 @@ import { compact, sample, isEmpty, random } from 'lodash';
 import UserAgent from 'user-agents';
 import shell from 'shelljs';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
+import { execSync } from 'child_process';
 import type { Settings } from '@shared/types';
+
+function getUserDataDir(): string {
+  try {
+    const electron = require('electron');
+    const appObj = electron.app || electron.remote?.app;
+    if (appObj) {
+      return path.join(appObj.getPath('userData'), 'myUserDataDir');
+    }
+  } catch {
+    /* not in electron */
+  }
+  return path.join(os.tmpdir(), 'shs_traffic_userdata');
+}
 
 export type LogFn = (message: string) => void;
 
@@ -35,7 +50,7 @@ function findChromePath(): string | null {
 class CrawlerUtil {
   private _log: LogFn = console.log;
   private isWaiting = false;
-  private userDataDirPath = './myUserDataDir';
+  private userDataDirPath = getUserDataDir();
 
   setLogger(fn: LogFn) {
     this._log = fn;
@@ -45,28 +60,62 @@ class CrawlerUtil {
     this._log(message);
   }
 
+  private killChromeProcessesUsingDir() {
+    if (process.platform !== 'win32') return;
+    try {
+      execSync(
+        `wmic process where "name='chrome.exe' and CommandLine like '%${this.userDataDirPath.replace(/\\/g, '\\\\')}%'" call terminate`,
+        { stdio: 'ignore', timeout: 10000 },
+      );
+    } catch {
+      /* ignore: wmic may not be available or no matching processes */
+    }
+  }
+
+  private removeChromeLockFiles() {
+    if (!fs.existsSync(this.userDataDirPath)) return;
+    const lockFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket', 'lockfile'];
+    for (const lf of lockFiles) {
+      const p = path.join(this.userDataDirPath, lf);
+      try {
+        if (fs.existsSync(p)) fs.rmSync(p, { force: true });
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
   async initializeUserDataDir() {
     try {
       this.log('인터넷 사용기록 폴더 세팅중..');
+      this.killChromeProcessesUsingDir();
+      await this.delay(1000);
+
       if (fs.existsSync(this.userDataDirPath)) {
+        let deleted = false;
         for (let attempt = 0; attempt < 5; attempt++) {
           try {
             fs.rmSync(this.userDataDirPath, { recursive: true, force: true });
+            deleted = true;
             break;
-          } catch (e: any) {
+          } catch {
             if (attempt < 4) {
               this.log(`폴더 삭제 재시도 (${attempt + 1}/5)...`);
+              this.killChromeProcessesUsingDir();
               await this.delay(2000);
-            } else {
-              throw e;
             }
           }
+        }
+        if (!deleted) {
+          this.log('폴더 삭제 실패 - lock 파일만 제거하고 진행');
+          this.removeChromeLockFiles();
         }
       }
       fs.mkdirSync(this.userDataDirPath, { recursive: true });
       this.log('인터넷 사용기록 폴더 세팅 완료');
     } catch (e: any) {
       console.error('인터넷 사용기록 폴더 세팅 중 에러 발생 ' + e);
+      this.removeChromeLockFiles();
     }
   }
 
