@@ -73,6 +73,15 @@ function getWorkerStatusList(): WorkerStatus[] {
 export async function startServer(options: StartServerOptions = {}): Promise<StartedServer> {
   db();
 
+  // 존재하지 않는 그룹명을 워커 배정에서 정리
+  const existingGroupNames = new Set(keywordGroupsRepo.list().map((g) => g.groupName));
+  for (const w of workersRepo.list()) {
+    const cleaned = w.assignedGroupNames.filter((n) => existingGroupNames.has(n));
+    if (cleaned.length !== w.assignedGroupNames.length) {
+      workersRepo.update(w.id, { assignedGroupNames: cleaned });
+    }
+  }
+
   const app = express();
   app.use(express.json({ limit: '5mb' }));
   app.use(parseCookies);
