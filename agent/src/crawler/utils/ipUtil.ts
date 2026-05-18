@@ -13,10 +13,11 @@ import https from 'https';
  * `public-ip` 패키지가 ESM-only 라 CommonJS 빌드에서 require() 에러가 나기 때문에
  * Node 내장 https 모듈로 직접 ipify 등에 GET 요청해서 처리한다.
  */
+// 모두 IPv4 전용 hostname 우선 (절대 IPv6 가 오지 않도록)
 const PUBLIC_IP_SERVICES = [
-  'https://api.ipify.org',       // ipify - dual stack URL 이지만 family:4 강제
-  'https://ipv4.icanhazip.com',  // icanhazip - 본래 IPv4 전용 hostname
-  'https://api4.ipify.org',      // ipify - 명시적으로 IPv4 전용 hostname
+  'https://api4.ipify.org',      // ipify - IPv4 전용 hostname (확정)
+  'https://ipv4.icanhazip.com',  // icanhazip - IPv4 전용 hostname (확정)
+  'https://api.ipify.org',       // dual-stack 백업 (family:4 강제 적용)
 ];
 
 const IPV4_REGEX = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;

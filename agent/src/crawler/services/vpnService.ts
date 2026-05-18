@@ -339,11 +339,12 @@ class VpnService {
   //  핫키로 IP 변경 (Alt + P)
   // ---------------------------------------------------------------------------
 
-  async 핫키로IP변경(userMe: any): Promise<string> {
+  async 핫키로IP변경(_userMe: any): Promise<string> {
     for (let i = 0; i < 10; i++) {
       crawlerUtil.log('아이피를 변경중입니다.');
 
       const prevIp = await this.getIp();
+      crawlerUtil.log(`[디버그] 변경 전 IP: ${prevIp}`);
 
       await keyboard.releaseKey(Key.LeftAlt, Key.P);
       await keyboard.pressKey(Key.LeftAlt, Key.P);
@@ -352,6 +353,7 @@ class VpnService {
       await crawlerUtil.delay(3000);
 
       const newIp = await this.getIp();
+      crawlerUtil.log(`[디버그] 변경 후 IP: ${newIp}`);
       console.log(`prevIP: ${prevIp} -> newIP: ${newIp}`);
 
       if (!isEmpty(newIp) && prevIp !== newIp) {
