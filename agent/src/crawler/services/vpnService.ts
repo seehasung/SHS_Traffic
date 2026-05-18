@@ -2,6 +2,7 @@ import { screen, mouse, keyboard, imageResource, centerOf, sleep, Key } from '@n
 import path from 'path';
 import { isEmpty } from 'lodash';
 import { crawlerUtil } from '../utils/crawlerUtil';
+import { getPublicIp } from '../utils/ipUtil';
 
 export type VpnType = 'hi' | 'cool' | 'momo';
 
@@ -10,11 +11,6 @@ interface VpnConnectParams {
   userMe: any;
   서비스번호: number;
   상품번호: number;
-}
-
-async function getPublicIp(): Promise<string> {
-  const { publicIpv4 } = await import('public-ip');
-  return publicIpv4();
 }
 
 class VpnService {

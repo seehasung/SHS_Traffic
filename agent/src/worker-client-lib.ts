@@ -258,8 +258,8 @@ export class WorkerClient extends EventEmitter {
 
   private async refreshPublicIp(): Promise<void> {
     try {
-      const { publicIpv4 } = await import('public-ip');
-      const ip = await publicIpv4({ timeout: 5000 } as any);
+      const { getPublicIp } = await import('./crawler/utils/ipUtil');
+      const ip = await getPublicIp(5000);
       if (ip && ip !== this.publicIp) {
         this.publicIp = ip;
         // 새 IP가 잡히면 즉시 한 번 하트비트를 보내 대시보드에 빠르게 반영
