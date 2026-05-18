@@ -3,7 +3,6 @@ import path from 'path';
 import { isEmpty } from 'lodash';
 import { crawlerUtil } from '../utils/crawlerUtil';
 import { getPublicIp } from '../utils/ipUtil';
-import { sendAltPViaPowerShell } from '../utils/hotkeyUtil';
 
 export type VpnType = 'hi' | 'cool' | 'momo';
 
@@ -347,22 +346,13 @@ class VpnService {
       const prevIp = await this.getIp();
       crawlerUtil.log(`[디버그] 변경 전 IP: ${prevIp}`);
 
-      // 방법 1) nut-js (기존)
-      try {
-        await keyboard.releaseKey(Key.LeftAlt, Key.P);
-        await keyboard.pressKey(Key.LeftAlt, Key.P);
-        await keyboard.releaseKey(Key.LeftAlt, Key.P);
-      } catch (e) {
-        crawlerUtil.log(`[디버그] nut-js 키 입력 실패: ${(e as Error)?.message ?? e}`);
-      }
+      await keyboard.releaseKey(Key.LeftAlt, Key.P);
+      await keyboard.pressKey(Key.LeftAlt, Key.P);
+      await keyboard.releaseKey(Key.LeftAlt, Key.P);
 
-      // 방법 2) PowerShell SendKeys (Windows 표준 키 합성 API)
-      //  - nut-js 가 권한 격리 등으로 VPN 프로그램에 키를 못 전달하는 경우를 보완.
-      //  - 두 방법을 모두 쏴서 어느 한쪽이라도 통하도록 한다.
-      const psOk = sendAltPViaPowerShell();
-      crawlerUtil.log(`[디버그] Alt+P 전송 - nut-js: 시도됨, PowerShell: ${psOk ? '성공' : '실패'}`);
-
-      await crawlerUtil.delay(3000);
+      // VPN 프로그램이 새 IP로 라우팅을 완전히 전환할 때까지 대기.
+      // 3초로는 ipify 요청이 아직 옛 경로로 나가 옛 IP가 잡히는 경우가 있어 5초로 늘림.
+      await crawlerUtil.delay(5000);
 
       const newIp = await this.getIp();
       crawlerUtil.log(`[디버그] 변경 후 IP: ${newIp}`);
