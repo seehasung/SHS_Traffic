@@ -24,7 +24,10 @@ const IPV4_REGEX = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
 
 export async function getPublicIp(timeoutMs: number = 5000): Promise<string> {
   let lastErr: unknown = null;
-  for (const url of PUBLIC_IP_SERVICES) {
+  // URL 에 매번 다른 timestamp 를 붙여 중간 CDN/프록시 캐시를 우회한다.
+  const cacheBuster = `_=${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  for (const baseUrl of PUBLIC_IP_SERVICES) {
+    const url = baseUrl + (baseUrl.includes('?') ? '&' : '?') + cacheBuster;
     try {
       const body = await httpGetText(url, timeoutMs);
       const ip = body.trim();
@@ -46,11 +49,13 @@ function httpGetText(url: string, timeoutMs: number): Promise<string> {
         timeout: timeoutMs,
         family: 4, // IPv4 강제 - DNS 조회/연결을 IPv4 로만 (VPN 우회 보장)
         // 캐시/keep-alive 영향 최소화
+        // Connection: close 로 매번 새 TCP 연결 → 옛 라우팅 경로 재사용 방지
         headers: {
           'cache-control': 'no-cache',
           pragma: 'no-cache',
           accept: 'text/plain',
           'user-agent': 'shs-traffic-worker',
+          connection: 'close',
         },
       },
       (res) => {

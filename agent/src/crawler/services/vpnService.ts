@@ -350,12 +350,20 @@ class VpnService {
       await keyboard.pressKey(Key.LeftAlt, Key.P);
       await keyboard.releaseKey(Key.LeftAlt, Key.P);
 
-      // VPN 프로그램이 새 IP로 라우팅을 완전히 전환할 때까지 대기.
-      // 3초로는 ipify 요청이 아직 옛 경로로 나가 옛 IP가 잡히는 경우가 있어 5초로 늘림.
+      // VPN 프로그램이 새 IP 로 라우팅을 완전히 전환할 때까지 대기.
+      // 초기 5초 대기 후, IP 가 아직 안 바뀐 것 같으면 추가로 2초씩 4번까지 더 기다리며 재확인.
+      // (IP 자체는 바뀌었지만 ipify 응답이 옛 라우팅으로 잡혔을 때 회복하기 위한 보조 로직)
       await crawlerUtil.delay(5000);
 
-      const newIp = await this.getIp();
+      let newIp = await this.getIp();
       crawlerUtil.log(`[디버그] 변경 후 IP: ${newIp}`);
+
+      for (let sub = 0; sub < 4 && (isEmpty(newIp) || prevIp === newIp); sub++) {
+        await crawlerUtil.delay(2000);
+        newIp = await this.getIp();
+        crawlerUtil.log(`[디버그] 변경 후 IP 재확인 ${sub + 1}: ${newIp}`);
+      }
+
       console.log(`prevIP: ${prevIp} -> newIP: ${newIp}`);
 
       if (!isEmpty(newIp) && prevIp !== newIp) {
