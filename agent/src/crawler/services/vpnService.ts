@@ -3,6 +3,7 @@ import path from 'path';
 import { isEmpty } from 'lodash';
 import { crawlerUtil } from '../utils/crawlerUtil';
 import { getPublicIp } from '../utils/ipUtil';
+import { sendAltPViaPowerShell } from '../utils/hotkeyUtil';
 
 export type VpnType = 'hi' | 'cool' | 'momo';
 
@@ -346,9 +347,20 @@ class VpnService {
       const prevIp = await this.getIp();
       crawlerUtil.log(`[디버그] 변경 전 IP: ${prevIp}`);
 
-      await keyboard.releaseKey(Key.LeftAlt, Key.P);
-      await keyboard.pressKey(Key.LeftAlt, Key.P);
-      await keyboard.releaseKey(Key.LeftAlt, Key.P);
+      // 방법 1) nut-js (기존)
+      try {
+        await keyboard.releaseKey(Key.LeftAlt, Key.P);
+        await keyboard.pressKey(Key.LeftAlt, Key.P);
+        await keyboard.releaseKey(Key.LeftAlt, Key.P);
+      } catch (e) {
+        crawlerUtil.log(`[디버그] nut-js 키 입력 실패: ${(e as Error)?.message ?? e}`);
+      }
+
+      // 방법 2) PowerShell SendKeys (Windows 표준 키 합성 API)
+      //  - nut-js 가 권한 격리 등으로 VPN 프로그램에 키를 못 전달하는 경우를 보완.
+      //  - 두 방법을 모두 쏴서 어느 한쪽이라도 통하도록 한다.
+      const psOk = sendAltPViaPowerShell();
+      crawlerUtil.log(`[디버그] Alt+P 전송 - nut-js: 시도됨, PowerShell: ${psOk ? '성공' : '실패'}`);
 
       await crawlerUtil.delay(3000);
 
