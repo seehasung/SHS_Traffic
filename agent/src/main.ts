@@ -1,8 +1,11 @@
 import { app, Tray, Menu, nativeImage, shell, dialog, BrowserWindow, screen, ipcMain } from 'electron';
 import path from 'node:path';
 import { autoUpdater } from 'electron-updater';
+import log from 'electron-log';
 import { startServer, type StartedServer } from './server';
 import { DEFAULT_AGENT_PORT } from '@shared/api';
+
+let isQuittingForUpdate = false;
 
 let tray: Tray | null = null;
 let server: StartedServer | null = null;
@@ -419,40 +422,54 @@ function quitApp() {
 }
 
 function initAutoUpdater() {
+  // electron-log 로 autoUpdater 동작을 파일에 남긴다.
+  // 로그 위치 (Windows): %USERPROFILE%\AppData\Roaming\SHS_Traffic\logs\main.log
+  log.transports.file.level = 'info';
+  log.transports.console.level = 'info';
+  (autoUpdater as any).logger = log;
+
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
+  log.info(`[AutoUpdater] 시작. 현재 버전: ${app.getVersion()}`);
+
   autoUpdater.on('checking-for-update', () => {
-    console.log('[AutoUpdater] 업데이트 확인 중...');
+    log.info('[AutoUpdater] 업데이트 확인 중...');
   });
 
   autoUpdater.on('update-available', (info) => {
-    console.log('[AutoUpdater] 업데이트 발견:', info.version);
+    log.info(`[AutoUpdater] 업데이트 발견: ${info.version}`);
     notifyStatus(`새 버전(${info.version})을 다운로드 중입니다...`);
   });
 
   autoUpdater.on('update-not-available', () => {
-    console.log('[AutoUpdater] 최신 버전입니다.');
+    log.info('[AutoUpdater] 최신 버전입니다.');
   });
 
   autoUpdater.on('download-progress', (progress) => {
-    console.log(`[AutoUpdater] 다운로드 진행률: ${Math.round(progress.percent)}%`);
+    log.info(`[AutoUpdater] 다운로드 진행률: ${Math.round(progress.percent)}%`);
   });
 
   autoUpdater.on('update-downloaded', (info) => {
-    console.log('[AutoUpdater] 업데이트 다운로드 완료:', info.version);
+    log.info(`[AutoUpdater] 업데이트 다운로드 완료: ${info.version}`);
     notifyStatus(`새 버전(${info.version}) 적용을 위해 5초 후 재시작합니다...`);
     setTimeout(() => {
+      // 업데이트용 quit임을 표시 → before-quit 핸들러가 가로채지 않도록
+      isQuittingForUpdate = true;
+      (app as any).isQuittingForUpdate = true;
+      (app as any).isQuitting = true;
+      log.info('[AutoUpdater] quitAndInstall 호출');
+      // isSilent=true, isForceRunAfter=true (NSIS oneClick:true 와 함께 사용)
       autoUpdater.quitAndInstall(true, true);
     }, 5000);
   });
 
   autoUpdater.on('error', (err) => {
-    console.error('[AutoUpdater] 오류:', err.message);
+    log.error('[AutoUpdater] 오류:', err);
   });
 
   autoUpdater.checkForUpdates().catch((err) => {
-    console.error('[AutoUpdater] 업데이트 확인 실패:', err.message);
+    log.error('[AutoUpdater] 업데이트 확인 실패:', err);
   });
 }
 
@@ -540,6 +557,11 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', async (e) => {
+  // 업데이트 설치를 위한 quit이면 절대 막지 않는다 (electron-updater가 NSIS 실행 직전)
+  if (isQuittingForUpdate) {
+    log.info('[before-quit] 업데이트 설치를 위한 quit이라 그대로 진행합니다.');
+    return;
+  }
   if (server) {
     e.preventDefault();
     (app as any).isQuitting = true;

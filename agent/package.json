@@ -1,6 +1,6 @@
 {
   "name": "@knowledge-shopping/agent",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "private": true,
   "description": "SHS_Traffic 워커 에이전트",
   "author": "SHS",
@@ -27,6 +27,7 @@
     "better-sqlite3": "^11.7.0",
     "check-internet-connected": "^2.0.6",
     "cors": "^2.8.5",
+    "electron-log": "^5.4.4",
     "electron-updater": "^6.8.3",
     "express": "^4.21.2",
     "jose": "^5.9.6",
@@ -101,8 +102,10 @@
       "icon": null
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false,
       "language": "1042"
     },
     "publish": {
