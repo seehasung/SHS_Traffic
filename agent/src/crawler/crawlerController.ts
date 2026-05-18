@@ -34,22 +34,32 @@ class CrawlerController {
     }
 
     this.chromePath = crawlerUtil.getChromePath();
-    const randomCount = this.getRandomCount(settings);
-    logFn(`\n총 "${randomCount}"번 상위로직을 실행하겠습니다.\n`);
 
-    for (let i = 0; i < randomCount; i++) {
+    // 사이클 시작 시 항상 새로 셔플 → 한 사이클 안에서는 셔플된 순서대로 모든 키워드를 한 번씩 실행.
+    // run() 은 한 사이클 단위로 호출되므로 (첫 실행 / 다음 사이클 / 정지 후 재시작 모두)
+    // 매번 자동으로 새 셔플 순서가 사용된다.
+    const shuffledKnowledges = shuffle(knowledges);
+    // 테스트 모드에서는 일부만 실행 (셔플된 앞쪽 N 개).
+    const runList =
+      settings.testMode === 'Y'
+        ? shuffledKnowledges.slice(0, Math.min(random(1, 3, false), shuffledKnowledges.length))
+        : shuffledKnowledges;
+    const totalCount = runList.length;
+    logFn(`\n할당된 키워드 ${knowledges.length}개를 랜덤 순서로 섞었습니다. 총 "${totalCount}"번 상위로직을 실행하겠습니다.\n`);
+
+    for (let i = 0; i < totalCount; i++) {
       if (shouldStop()) return;
 
-      const randomItem = sample(knowledges)!;
+      const item = runList[i];
       const effectiveSetting = { ...settings };
       if (effectiveSetting.pageType === 'random') {
         (effectiveSetting as any).pageType = sample(['pc', 'mobile']);
       }
 
-      logFn(`\n[${i + 1}/${randomCount}번째 상위로직 실행] ${randomItem.keyword}, ${randomItem.itemName}, ${randomItem.purchaseName || ''}\n`);
+      logFn(`\n[${i + 1}/${totalCount}번째 상위로직 실행] ${item.keyword}, ${item.itemName}, ${item.purchaseName || ''}\n`);
 
       try {
-        await this._startTopExposureLogic(effectiveSetting, randomItem, naverAccounts, i + 1, shouldStop);
+        await this._startTopExposureLogic(effectiveSetting, item, naverAccounts, i + 1, shouldStop);
       } catch (e: any) {
         await this.close().catch(() => {});
         if (e.message === 'CANCELLED' || e.message === 'VPN_CONNECTION_FAILED') throw e;
@@ -60,24 +70,19 @@ class CrawlerController {
     }
 
     logFn('\n[공통로직 실행]\n');
-    const lastItem = sample(knowledges)!;
+    const lastItem = runList[runList.length - 1] ?? sample(shuffledKnowledges)!;
     const effectiveSetting = { ...settings };
     if (effectiveSetting.pageType === 'random') {
       (effectiveSetting as any).pageType = sample(['pc', 'mobile']);
     }
 
     try {
-      await this._startCommonExposureLogic(effectiveSetting, lastItem, naverAccounts, randomCount, shouldStop);
+      await this._startCommonExposureLogic(effectiveSetting, lastItem, naverAccounts, totalCount, shouldStop);
     } catch (e: any) {
       await this.close().catch(() => {});
       if (e.message === 'CANCELLED') throw e;
       logFn('[공통로직에서 오류가 발생했지만 무시하고 계속 진행하겠습니다] ' + e.message);
     }
-  }
-
-  private getRandomCount(settings: Settings): number {
-    if (settings.testMode === 'Y') return random(1, 3, false);
-    return random(18, 20, false);
   }
 
   private async _openBrowser() {
