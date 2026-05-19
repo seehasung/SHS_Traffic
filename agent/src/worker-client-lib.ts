@@ -44,6 +44,9 @@ export class WorkerClient extends EventEmitter {
   private pendingLogs: PendingLog[] = [];
   private cacheFile: string | null = null;
   private isAuthenticated = false;
+  private wsPingTimer: ReturnType<typeof setInterval> | null = null;
+  private lastPongAt = 0;
+  private reconnectAttempt = 0;
 
   constructor(options: WorkerClientOptions) {
     super();
@@ -133,6 +136,7 @@ export class WorkerClient extends EventEmitter {
   disconnect() {
     this.isAuthenticated = false;
     this.stopHeartbeat();
+    this.stopWsPingLoop();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -160,12 +164,18 @@ export class WorkerClient extends EventEmitter {
 
     this.ws.on('open', () => {
       console.log('[Worker] 서버 연결됨, 인증 시작');
+      this.reconnectAttempt = 0;
+      this.startWsPingLoop();
       const auth: WorkerMessage = {
         type: 'worker:auth',
         loginId: this.options.loginId,
         loginPassword: this.options.loginPassword,
       };
       this.ws!.send(JSON.stringify(auth));
+    });
+
+    this.ws.on('pong', () => {
+      this.lastPongAt = Date.now();
     });
 
     this.ws.on('message', (raw) => {
@@ -181,6 +191,7 @@ export class WorkerClient extends EventEmitter {
       console.log(`[Worker] 연결 종료 (code=${code}, reason=${reason})`);
       this.isAuthenticated = false;
       this.stopHeartbeat();
+      this.stopWsPingLoop();
       this.emit('disconnected');
       // 작업은 계속 돌아간다 (this.isRunning 유지). 로그는 pendingLogs 에 큐잉됨.
       this.scheduleReconnect();
@@ -188,8 +199,41 @@ export class WorkerClient extends EventEmitter {
 
     this.ws.on('error', (err) => {
       console.error('[Worker] WebSocket 에러:', err.message);
+      // error 시 ws 라이브러리는 close 도 함께 발생시키지만, 혹시 누락될 경우를 대비해 재연결도 스케줄
       this.emit('error', err.message);
+      this.scheduleReconnect();
     });
+  }
+
+  /**
+   * WebSocket 자체 ping/pong 으로 stale 연결을 빨리 감지한다.
+   * 25초마다 ping → 60초 안에 pong 응답 없으면 강제로 terminate → 재연결 트리거.
+   * Render 같은 reverse proxy 환경에서 close 이벤트가 늦게 오는 문제 해결.
+   */
+  private startWsPingLoop() {
+    this.stopWsPingLoop();
+    this.lastPongAt = Date.now();
+    this.wsPingTimer = setInterval(() => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      const now = Date.now();
+      if (now - this.lastPongAt > 60000) {
+        console.warn('[Worker] 60초간 pong 응답 없음 → 강제 재연결');
+        try {
+          this.ws.terminate();
+        } catch {}
+        return;
+      }
+      try {
+        this.ws.ping();
+      } catch {}
+    }, 25000);
+  }
+
+  private stopWsPingLoop() {
+    if (this.wsPingTimer) {
+      clearInterval(this.wsPingTimer);
+      this.wsPingTimer = null;
+    }
   }
 
   private handleMessage(msg: ServerToWorkerMessage) {
@@ -480,10 +524,13 @@ export class WorkerClient extends EventEmitter {
 
   private scheduleReconnect() {
     if (this.reconnectTimer) return;
-    console.log('[Worker] 5초 후 재연결 시도...');
+    // 지수 백오프: 2s, 4s, 8s, 16s, 30s (cap)
+    this.reconnectAttempt = Math.min(this.reconnectAttempt + 1, 5);
+    const delay = Math.min(2000 * Math.pow(2, this.reconnectAttempt - 1), 30000);
+    console.log(`[Worker] ${Math.round(delay / 1000)}초 후 재연결 시도... (attempt=${this.reconnectAttempt})`);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
-    }, 5000);
+    }, delay);
   }
 }

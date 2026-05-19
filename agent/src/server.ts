@@ -463,6 +463,16 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   wssWorker.on('connection', (socket) => {
     let authenticatedWorkerId: string | null = null;
 
+    // ping/pong 기반 keep-alive: 워커가 비정상 종료되어도 서버가 30초 안에 감지하여 socket 정리.
+    (socket as any).isAlive = true;
+    socket.on('pong', () => {
+      (socket as any).isAlive = true;
+    });
+
+    socket.on('error', (err) => {
+      console.warn('[Worker WS] socket error:', err?.message ?? err);
+    });
+
     socket.on('message', (raw) => {
       try {
         const msg: WorkerMessage = JSON.parse(raw.toString());
@@ -587,15 +597,46 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     });
   });
 
-  // 하트비트 타임아웃 감시 (30초 내 응답 없으면 오프라인)
-  setInterval(() => {
+  // ─── WS keep-alive: 30초마다 모든 워커 소켓에 ping → 30초 안에 pong 없으면 terminate ───
+  // Render 등 reverse proxy 환경에서 한쪽이 끊겨도 close 이벤트가 한참 동안 안 오는 stale 문제 방지.
+  const wsPingInterval = setInterval(() => {
+    wssWorker.clients.forEach((client) => {
+      const c = client as WebSocket & { isAlive?: boolean };
+      if (c.isAlive === false) {
+        try {
+          c.terminate();
+        } catch {}
+        return;
+      }
+      c.isAlive = false;
+      try {
+        c.ping();
+      } catch {}
+    });
+  }, 30000);
+
+  // 하트비트 타임아웃 감시 (45초 내 application heartbeat 없으면 오프라인 + socket 강제 정리)
+  const staleInterval = setInterval(() => {
     const now = Date.now();
     for (const [workerId, status] of workerStatuses) {
-      if (status.connectionStatus === 'online' && status.lastHeartbeat && now - status.lastHeartbeat > 30000) {
+      if (
+        status.connectionStatus === 'online' &&
+        status.lastHeartbeat &&
+        now - status.lastHeartbeat > 45000
+      ) {
         status.connectionStatus = 'offline';
         status.runnerStatus = 'idle';
         workerStatuses.set(workerId, status);
         broadcastDashboard({ type: 'worker:status', status });
+
+        // stale socket 도 정리해서 다음 재연결을 깨끗하게.
+        const sock = workerSockets.get(workerId);
+        if (sock) {
+          try {
+            sock.terminate();
+          } catch {}
+          workerSockets.delete(workerId);
+        }
       }
     }
   }, 10000);
@@ -611,6 +652,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     port,
     close: () =>
       new Promise<void>((resolve) => {
+        clearInterval(wsPingInterval);
+        clearInterval(staleInterval);
         wss.close();
         wssWorker.close();
         server.close(() => resolve());
