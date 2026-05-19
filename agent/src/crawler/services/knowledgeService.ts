@@ -256,7 +256,7 @@ class KnowledgeService {
     let purchaseDetailPage: Page | undefined;
     let totalShoppingDetailPage: Page | undefined;
 
-    const MAX_PAGES = 100;
+    const MAX_PAGES = 50;
     for (let i = 0; i < MAX_PAGES; i++) {
       if (i === 0) {
         await crawlerUtil.waitRandom(shoppingResultPage, 5, 10).catch(console.error);
