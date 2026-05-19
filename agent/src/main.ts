@@ -277,16 +277,17 @@ function showLoginWindow() {
 
     ipcRenderer.on('worker:status', (_, data) => {
       const btn = document.getElementById('connectBtn');
+      const conn = document.getElementById('conn-status');
       if (data.type === 'connected') {
         document.getElementById('login-section').style.display = 'none';
         document.getElementById('dashboard-section').style.display = 'block';
+        if (conn) { conn.className = 'badge connected'; conn.textContent = '연결됨'; }
       } else if (data.type === 'error') {
         showStatus('연결 실패: ' + data.message, 'error');
         btn.textContent = '호스트 서버에 연결';
         btn.disabled = false;
       } else if (data.type === 'disconnected') {
-        document.getElementById('conn-status').className = 'badge disconnected';
-        document.getElementById('conn-status').textContent = '연결 끊김';
+        if (conn) { conn.className = 'badge disconnected'; conn.textContent = '연결 끊김 (로컬 작업 계속)'; }
       }
     });
 
@@ -484,10 +485,12 @@ ipcMain.on('worker:connect', async (_event, data: { serverUrl: string; loginId: 
       workerClient.disconnect();
     }
     const serverUrl = data.serverUrl.replace(/\/+$/, '');
+    const cacheDir = path.join(app.getPath('userData'), 'worker-cache');
     workerClient = new WorkerClient({
       serverUrl,
       loginId: data.loginId,
       loginPassword: data.loginPw,
+      cacheDir,
     });
 
     workerClient.on('connected', () => {
