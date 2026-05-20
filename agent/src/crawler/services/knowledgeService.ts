@@ -133,10 +133,10 @@ class KnowledgeService {
       const nextPageSelector = isPc
         ? '[class*="pagination_btn_page"][class*="active"] + a'
         : '*[class*=paginator] a[class*=active] + *';
-      await crawlerUtil.waitRandom(page, 1, 2);
+      await crawlerUtil.waitRandom(page, 0, 1);
 
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await crawlerUtil.delay(1000);
+      await crawlerUtil.delay(500);
 
       await page.waitForSelector(nextPageSelector, { timeout: 5000 });
 
@@ -259,9 +259,9 @@ class KnowledgeService {
     const MAX_PAGES = 50;
     for (let i = 0; i < MAX_PAGES; i++) {
       if (i === 0) {
-        await crawlerUtil.waitRandom(shoppingResultPage, 5, 10).catch(console.error);
+        await crawlerUtil.waitRandom(shoppingResultPage, 2, 5).catch(console.error);
       } else {
-        await crawlerUtil.waitRandom(shoppingResultPage, 1, 3).catch(console.error);
+        await crawlerUtil.waitRandom(shoppingResultPage, 0, 2).catch(console.error);
       }
       await crawlerUtil.autoScroll(shoppingResultPage, '', 200, 200).catch(console.error);
       await crawlerUtil.waitTillHTMLRendered(shoppingResultPage);
