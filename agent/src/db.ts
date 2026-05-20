@@ -153,4 +153,19 @@ function migrate(db: Database.Database) {
     `);
     db.prepare(`UPDATE schema_version SET version = 7`).run();
   }
+
+  const current8 = (db.prepare(`SELECT version FROM schema_version`).get() as { version: number }).version;
+  if (current8 < 8) {
+    // knowledges.is_active: 키워드별 on/off (기본 켜짐)
+    const kCols = db.pragma('table_info(knowledges)') as { name: string }[];
+    if (!kCols.some((c) => c.name === 'is_active')) {
+      db.exec(`ALTER TABLE knowledges ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;`);
+    }
+    // failed_keywords.knowledge_id: 어느 키워드 행에서 실패했는지 추적 → 자동 비활성화에 사용
+    const fCols = db.pragma('table_info(failed_keywords)') as { name: string }[];
+    if (!fCols.some((c) => c.name === 'knowledge_id')) {
+      db.exec(`ALTER TABLE failed_keywords ADD COLUMN knowledge_id TEXT DEFAULT NULL;`);
+    }
+    db.prepare(`UPDATE schema_version SET version = 8`).run();
+  }
 }

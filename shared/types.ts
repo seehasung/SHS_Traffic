@@ -31,6 +31,8 @@ export interface Knowledge {
   itemName: string;
   purchaseName?: string;
   groupName?: string;
+  /** 활성 여부. false 면 워커가 이 키워드를 작업하지 않는다. 기본 true. */
+  isActive: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -173,6 +175,8 @@ export interface FailedKeyword {
   id: number;
   workerId: string;
   workerName: string;
+  /** 실패한 키워드의 knowledge.id (워커가 보고할 때 함께 전달). 자동 비활성화에 사용. */
+  knowledgeId?: string;
   keyword: string;
   itemName: string;
   purchaseName?: string;
@@ -203,6 +207,7 @@ export type WorkerMessage =
   | { type: 'worker:request-stop' }
   | {
       type: 'worker:failed-keyword';
+      knowledgeId?: string;
       keyword: string;
       itemName: string;
       purchaseName?: string;

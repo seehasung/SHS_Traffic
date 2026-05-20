@@ -195,6 +195,20 @@ export default function WorkerLogsPage() {
     setFailedKeywords((prev) => prev.filter((f) => f.id !== id));
   }, []);
 
+  const reactivateKnowledge = useCallback(async (knowledgeId: string | undefined, keyword: string) => {
+    if (!knowledgeId) {
+      alert('이 항목은 키워드 ID 정보가 없어 자동 ON 할 수 없습니다. 키워드 관리 페이지에서 직접 ON 해주세요.');
+      return;
+    }
+    if (!confirm(`키워드 "${keyword}" 를 다시 ON 하시겠습니까?`)) return;
+    try {
+      await api.knowledgesActive.set(knowledgeId, true);
+      alert('다시 ON 처리되었습니다. 다음 사이클부터 워커가 작업을 재개합니다.');
+    } catch (e) {
+      alert('ON 처리 실패: ' + String((e as Error).message));
+    }
+  }, []);
+
   useEffect(() => {
     const el = logContainerRef.current;
     if (el) {
@@ -318,7 +332,7 @@ export default function WorkerLogsPage() {
                     <Th>판매처</Th>
                     <Th isNumeric>검색 페이지</Th>
                     <Th>사유</Th>
-                    <Th></Th>
+                    <Th>액션</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
@@ -337,14 +351,25 @@ export default function WorkerLogsPage() {
                       </Td>
                       <Td fontSize="xs" color="red.600">{f.reason}</Td>
                       <Td>
-                        <IconButton
-                          aria-label="삭제"
-                          size="xs"
-                          variant="ghost"
-                          colorScheme="red"
-                          icon={<Text fontSize="md">×</Text>}
-                          onClick={() => removeFailed(f.id)}
-                        />
+                        <HStack spacing={1}>
+                          <Button
+                            size="xs"
+                            colorScheme="green"
+                            variant="outline"
+                            isDisabled={!f.knowledgeId}
+                            onClick={() => reactivateKnowledge(f.knowledgeId, f.keyword)}
+                          >
+                            다시 ON
+                          </Button>
+                          <IconButton
+                            aria-label="기록 삭제"
+                            size="xs"
+                            variant="ghost"
+                            colorScheme="red"
+                            icon={<Text fontSize="md">×</Text>}
+                            onClick={() => removeFailed(f.id)}
+                          />
+                        </HStack>
                       </Td>
                     </Tr>
                   ))}

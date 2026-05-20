@@ -23,6 +23,7 @@ interface PendingLog {
 }
 
 interface PendingFailedKeyword {
+  knowledgeId?: string;
   keyword: string;
   itemName: string;
   purchaseName?: string;
@@ -422,10 +423,22 @@ export class WorkerClient extends EventEmitter {
    * 서버 연결이 끊겨 있으면 큐에 쌓아뒀다가 재연결 시 flush.
    */
   sendFailedKeyword(info: PendingFailedKeyword) {
+    // 로컬 캐시에서도 해당 키워드를 즉시 비활성화 → 같은 세션에서 재시도 방지.
+    // 서버에서 config:update 가 곧 오지만, 그 사이에도 안전하게 작동하도록.
+    if (info.knowledgeId) {
+      const idx = this.knowledges.findIndex((k) => k.id === info.knowledgeId);
+      if (idx !== -1) {
+        this.knowledges[idx] = { ...this.knowledges[idx], isActive: false };
+        this.saveCacheToDisk();
+        this.emit('knowledges', this.knowledges);
+      }
+    }
+
     if (this.ws?.readyState === WebSocket.OPEN && this.isAuthenticated) {
       try {
         const msg: WorkerMessage = {
           type: 'worker:failed-keyword',
+          knowledgeId: info.knowledgeId,
           keyword: info.keyword,
           itemName: info.itemName,
           purchaseName: info.purchaseName,
@@ -454,6 +467,7 @@ export class WorkerClient extends EventEmitter {
       try {
         const msg: WorkerMessage = {
           type: 'worker:failed-keyword',
+          knowledgeId: info.knowledgeId,
           keyword: info.keyword,
           itemName: info.itemName,
           purchaseName: info.purchaseName,

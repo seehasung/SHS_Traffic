@@ -75,7 +75,8 @@ function getWorkerStatusList(): WorkerStatus[] {
  * 호스트에서 키워드/그룹/네이버계정/설정이 변경된 직후 호출.
  */
 function broadcastConfigToAllWorkers() {
-  const allKnowledges = knowledgesRepo.list();
+  // 워커에는 활성 키워드만 전달 (isActive === false 인 키워드는 즉시 작업 대상에서 제외)
+  const allKnowledges = knowledgesRepo.list().filter((k) => k.isActive !== false);
   const settings = settingsRepo.get();
   const naverAccounts = naverAccountsRepo.list();
   for (const worker of workersRepo.list()) {
@@ -220,7 +221,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
       // 그룹 배정이 바뀌었을 수 있으니 연결된 워커에게 새 키워드/설정 push
       const ws = workerSockets.get(req.params.id);
       if (ws && ws.readyState === WebSocket.OPEN) {
-        const allKnowledges = knowledgesRepo.list();
+        const allKnowledges = knowledgesRepo.list().filter((k) => k.isActive !== false);
         const assignedKnowledges = updated.assignedGroupNames.length > 0
           ? allKnowledges.filter((k) => k.groupName && updated.assignedGroupNames.includes(k.groupName))
           : [];
@@ -310,12 +311,15 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     const session = req.session!;
     let items = knowledgesRepo.list();
     if (session.role === 'worker') {
+      // 워커 HTTP 세션도 활성 + 배정된 그룹만
+      items = items.filter((k) => k.isActive !== false);
       if (session.assignedGroupNames && session.assignedGroupNames.length > 0) {
         items = items.filter((k) => k.groupName && session.assignedGroupNames!.includes(k.groupName));
       } else {
         items = [];
       }
     }
+    // admin 은 isActive 포함한 전체 목록을 받아 스위치 UI 에서 사용
     res.json({ items });
   });
   app.post(API.knowledges, (req, res) => {
@@ -325,6 +329,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   });
   app.put('/api/knowledges/:id', (req, res) => {
     const item = knowledgesRepo.upsert({ ...req.body, id: req.params.id });
+    broadcastConfigToAllWorkers();
+    res.json({ item });
+  });
+  // 스위치 전용 빠른 토글 (다른 필드는 건드리지 않음)
+  app.patch('/api/knowledges/:id/active', (req, res) => {
+    const active = !!req.body?.isActive;
+    const item = knowledgesRepo.setActive(req.params.id, active);
+    if (!item) return res.status(404).json({ error: 'NOT_FOUND' });
     broadcastConfigToAllWorkers();
     res.json({ item });
   });
@@ -522,8 +534,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
             lastHeartbeat: Date.now(),
           });
 
-          // 배정된 그룹의 키워드만 전송 (배정된 그룹이 없으면 빈 목록)
-          const allKnowledges = knowledgesRepo.list();
+          // 배정된 그룹의 키워드만 전송 (배정된 그룹이 없으면 빈 목록). isActive=false 는 워커가 작업하지 않도록 제외.
+          const allKnowledges = knowledgesRepo.list().filter((k) => k.isActive !== false);
           const assignedKnowledges = worker.assignedGroupNames.length > 0
             ? allKnowledges.filter((k) => k.groupName && worker.assignedGroupNames.includes(k.groupName))
             : [];
@@ -586,6 +598,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
           const failed = failedKeywordsRepo.append(
             authenticatedWorkerId,
             workerName,
+            msg.knowledgeId,
             msg.keyword,
             msg.itemName,
             msg.purchaseName,
@@ -593,7 +606,31 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
             msg.pagesScanned,
             msg.reason,
           );
+          // 50페이지까지 못 찾은 키워드는 자동으로 OFF 처리하여 다음 사이클부터 워커가 작업하지 않음
+          let autoDisabled = false;
+          if (msg.knowledgeId) {
+            const updated = knowledgesRepo.setActive(msg.knowledgeId, false);
+            if (updated) {
+              autoDisabled = true;
+              // 모든 워커에 새 active 목록을 즉시 push
+              broadcastConfigToAllWorkers();
+              // 대시보드에도 자동 off 로그 한 줄 남김
+              const noteMsg = `[자동 OFF] 키워드 "${msg.keyword}" 상품번호 "${msg.itemName}" — ${msg.reason} (${msg.pagesScanned}페이지 검색)`;
+              const note = logsRepo.append(`[워커:${authenticatedWorkerId}] ${noteMsg}`, 'warn', 0);
+              workerLogsRepo.append(authenticatedWorkerId, workerName, noteMsg, 'warn');
+              broadcastDashboard({ type: 'log', entry: note });
+              broadcastDashboard({
+                type: 'worker:log',
+                workerId: authenticatedWorkerId,
+                workerName,
+                entry: note,
+              });
+            }
+          }
           broadcastDashboard({ type: 'worker:failed-keyword', failed });
+          if (autoDisabled) {
+            console.log(`[server] knowledge ${msg.knowledgeId} 를 50페이지 실패로 자동 비활성화함`);
+          }
         }
 
         if (msg.type === 'worker:request-start') {

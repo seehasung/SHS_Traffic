@@ -126,6 +126,10 @@ export const api = {
       return call<{ ok: true }>('DELETE', `/api/worker-logs${qs}`);
     },
   },
+  knowledgesActive: {
+    set: (id: string, isActive: boolean) =>
+      call<{ item: import('@shared/types').Knowledge }>('PATCH', `/api/knowledges/${encodeURIComponent(id)}/active`, { isActive }).then((r) => r.item),
+  },
   workerFailedKeywords: {
     list: (workerId?: string, limit = 2000) => {
       const qs = new URLSearchParams();

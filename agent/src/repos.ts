@@ -136,6 +136,7 @@ function rowToKnowledge(r: any): Knowledge {
     itemName: r.item_name,
     purchaseName: r.purchase_name ?? undefined,
     groupName: r.group_name ?? undefined,
+    isActive: r.is_active === undefined || r.is_active === null ? true : !!r.is_active,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -149,18 +150,47 @@ export const knowledgesRepo = {
   upsert(input: Partial<Knowledge> & { keyword: string; itemName: string }): Knowledge {
     const now = Date.now();
     const id = input.id ?? uid(25);
-    const existing = input.id
-      ? (db().prepare(`SELECT created_at FROM knowledges WHERE id = ?`).get(id) as { created_at: number } | undefined)
+    const existingRow = input.id
+      ? (db().prepare(`SELECT created_at, is_active FROM knowledges WHERE id = ?`).get(id) as
+          | { created_at: number; is_active: number }
+          | undefined)
       : undefined;
-    const createdAt = existing?.created_at ?? now;
+    const createdAt = existingRow?.created_at ?? now;
+    // isActive 가 명시되면 그 값, 아니면 기존 값 유지(신규는 true).
+    const isActiveInt =
+      input.isActive === undefined
+        ? existingRow
+          ? existingRow.is_active
+          : 1
+        : input.isActive
+        ? 1
+        : 0;
     db()
       .prepare(
-        `INSERT INTO knowledges(id, keyword, item_name, purchase_name, group_name, created_at, updated_at)
-         VALUES(?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO knowledges(id, keyword, item_name, purchase_name, group_name, is_active, created_at, updated_at)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET keyword=excluded.keyword, item_name=excluded.item_name,
-           purchase_name=excluded.purchase_name, group_name=excluded.group_name, updated_at=excluded.updated_at`,
+           purchase_name=excluded.purchase_name, group_name=excluded.group_name,
+           is_active=excluded.is_active, updated_at=excluded.updated_at`,
       )
-      .run(id, input.keyword, input.itemName, input.purchaseName ?? null, input.groupName ?? null, createdAt, now);
+      .run(
+        id,
+        input.keyword,
+        input.itemName,
+        input.purchaseName ?? null,
+        input.groupName ?? null,
+        isActiveInt,
+        createdAt,
+        now,
+      );
+    return rowToKnowledge(db().prepare(`SELECT * FROM knowledges WHERE id = ?`).get(id));
+  },
+  setActive(id: string, active: boolean): Knowledge | null {
+    const exists = db().prepare(`SELECT 1 FROM knowledges WHERE id = ?`).get(id);
+    if (!exists) return null;
+    db()
+      .prepare(`UPDATE knowledges SET is_active = ?, updated_at = ? WHERE id = ?`)
+      .run(active ? 1 : 0, Date.now(), id);
     return rowToKnowledge(db().prepare(`SELECT * FROM knowledges WHERE id = ?`).get(id));
   },
   remove(id: string) {
@@ -316,6 +346,7 @@ function rowToFailedKeyword(r: any): FailedKeyword {
     id: r.id,
     workerId: r.worker_id,
     workerName: r.worker_name,
+    knowledgeId: r.knowledge_id ?? undefined,
     keyword: r.keyword,
     itemName: r.item_name,
     purchaseName: r.purchase_name ?? undefined,
@@ -343,6 +374,7 @@ export const failedKeywordsRepo = {
   append(
     workerId: string,
     workerName: string,
+    knowledgeId: string | undefined,
     keyword: string,
     itemName: string,
     purchaseName: string | undefined,
@@ -353,11 +385,21 @@ export const failedKeywordsRepo = {
     const now = Date.now();
     const info = db()
       .prepare(
-        `INSERT INTO failed_keywords(worker_id, worker_name, keyword, item_name, purchase_name, group_name, pages_scanned, reason, created_at)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO failed_keywords(worker_id, worker_name, knowledge_id, keyword, item_name, purchase_name, group_name, pages_scanned, reason, created_at)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(workerId, workerName, keyword, itemName, purchaseName ?? null, groupName ?? null, pagesScanned, reason, now);
-    // 워커별 최근 2000건 유지
+      .run(
+        workerId,
+        workerName,
+        knowledgeId ?? null,
+        keyword,
+        itemName,
+        purchaseName ?? null,
+        groupName ?? null,
+        pagesScanned,
+        reason,
+        now,
+      );
     db()
       .prepare(
         `DELETE FROM failed_keywords WHERE worker_id = ? AND id NOT IN (
@@ -369,6 +411,7 @@ export const failedKeywordsRepo = {
       id: Number(info.lastInsertRowid),
       workerId,
       workerName,
+      knowledgeId,
       keyword,
       itemName,
       purchaseName,

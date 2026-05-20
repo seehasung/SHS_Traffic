@@ -9,12 +9,14 @@ import {
   Input,
   Select,
   Stack,
+  Switch,
   Table,
   Tbody,
   Td,
   Text,
   Th,
   Thead,
+  Tooltip,
   Tr,
   useToast,
   AlertDialog,
@@ -205,6 +207,28 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
     await refreshKnowledges();
     onClose();
     setDeleteTarget(null);
+  };
+
+  const toggleActive = async (k: Knowledge) => {
+    const nextActive = !((k.isActive ?? true));
+    // 낙관적 업데이트
+    setItems((prev) => prev.map((x) => (x.id === k.id ? { ...x, isActive: nextActive } : x)));
+    setAllKnowledges((prev) => prev.map((x) => (x.id === k.id ? { ...x, isActive: nextActive } : x)));
+    try {
+      await api.knowledgesActive.set(k.id, nextActive);
+      toast({
+        title: nextActive ? '활성화됨' : '비활성화됨',
+        description: `"${k.keyword}" → 워커가 ${nextActive ? '다음 사이클부터 작업' : '작업하지 않음'}`,
+        status: nextActive ? 'success' : 'warning',
+        duration: 2000,
+        position: 'top',
+      });
+    } catch (e) {
+      // 롤백
+      setItems((prev) => prev.map((x) => (x.id === k.id ? { ...x, isActive: !nextActive } : x)));
+      setAllKnowledges((prev) => prev.map((x) => (x.id === k.id ? { ...x, isActive: !nextActive } : x)));
+      toast({ title: '변경 실패', description: String((e as Error).message), status: 'error', position: 'top' });
+    }
   };
 
   const addKnowledge = async () => {
@@ -416,6 +440,7 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
                 <Table size="sm">
                   <Thead bg="gray.50">
                     <Tr>
+                      <Th w="70px" textAlign="center">활성</Th>
                       <Th>키워드</Th>
                       <Th>상품명</Th>
                       <Th>상품번호</Th>
@@ -424,27 +449,48 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
                     </Tr>
                   </Thead>
                   <Tbody>
-                    {items.map((k) => (
-                      <Tr key={k.id}>
-                        <Td>{k.keyword}</Td>
-                        <Td>{k.purchaseName || '-'}</Td>
-                        <Td>{k.itemName}</Td>
-                        <Td>{new Date(k.createdAt).toLocaleDateString()}</Td>
-                        <Td isNumeric>
-                          <IconButton
-                            aria-label="삭제"
-                            size="sm"
-                            variant="ghost"
-                            colorScheme="red"
-                            icon={<FiTrash2 />}
-                            onClick={() => confirmDeleteKnowledge(k)}
-                          />
-                        </Td>
-                      </Tr>
-                    ))}
+                    {items.map((k) => {
+                      const active = k.isActive ?? true;
+                      return (
+                        <Tr key={k.id} bg={active ? undefined : 'gray.50'} opacity={active ? 1 : 0.65}>
+                          <Td textAlign="center">
+                            <Tooltip
+                              label={active ? '클릭하면 OFF (워커가 작업하지 않음)' : '클릭하면 ON (워커가 다음 사이클부터 작업)'}
+                              hasArrow
+                            >
+                              <Switch
+                                size="sm"
+                                colorScheme="green"
+                                isChecked={active}
+                                onChange={() => toggleActive(k)}
+                              />
+                            </Tooltip>
+                          </Td>
+                          <Td>
+                            <HStack spacing={2}>
+                              <Text textDecoration={active ? 'none' : 'line-through'}>{k.keyword}</Text>
+                              {!active && <Badge colorScheme="red" fontSize="2xs">OFF</Badge>}
+                            </HStack>
+                          </Td>
+                          <Td>{k.purchaseName || '-'}</Td>
+                          <Td>{k.itemName}</Td>
+                          <Td>{new Date(k.createdAt).toLocaleDateString()}</Td>
+                          <Td isNumeric>
+                            <IconButton
+                              aria-label="삭제"
+                              size="sm"
+                              variant="ghost"
+                              colorScheme="red"
+                              icon={<FiTrash2 />}
+                              onClick={() => confirmDeleteKnowledge(k)}
+                            />
+                          </Td>
+                        </Tr>
+                      );
+                    })}
                     {items.length === 0 && (
                       <Tr>
-                        <Td colSpan={5} textAlign="center" color="gray.500" py={6}>
+                        <Td colSpan={6} textAlign="center" color="gray.500" py={6}>
                           이 그룹에 등록된 항목이 없습니다.
                         </Td>
                       </Tr>

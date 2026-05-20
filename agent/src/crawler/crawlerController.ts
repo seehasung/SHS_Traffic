@@ -8,6 +8,7 @@ import { NAVER_URL } from './constants/urls';
 import type { Knowledge, NaverAccount, Settings } from '@shared/types';
 
 export interface FailedKeywordInfo {
+  knowledgeId: string;
   keyword: string;
   itemName: string;
   purchaseName?: string;
@@ -52,7 +53,9 @@ class CrawlerController {
     // 사이클 시작 시 항상 새로 셔플 → 한 사이클 안에서는 셔플된 순서대로 모든 키워드를 한 번씩 실행.
     // run() 은 한 사이클 단위로 호출되므로 (첫 실행 / 다음 사이클 / 정지 후 재시작 모두)
     // 매번 자동으로 새 셔플 순서가 사용된다.
-    const shuffledKnowledges = shuffle(knowledges);
+    // 안전망: 혹시 서버에서 비활성화 키워드가 같이 왔거나 로컬에서 isActive=false 로 표시된 키워드가 있으면 제외.
+    const activeKnowledges = knowledges.filter((k) => (k as any).isActive !== false);
+    const shuffledKnowledges = shuffle(activeKnowledges);
     // 테스트 모드에서는 일부만 실행 (셔플된 앞쪽 N 개).
     const runList =
       settings.testMode === 'Y'
@@ -203,6 +206,7 @@ class CrawlerController {
     if (result.failed) {
       try {
         this.onFailedKeyword?.({
+          knowledgeId: knowledge.id,
           keyword: knowledge.keyword,
           itemName: knowledge.itemName,
           purchaseName: knowledge.purchaseName,
