@@ -310,10 +310,53 @@ export class WorkerClient extends EventEmitter {
     const { crawlerController } = await import('./crawler/crawlerController');
     const { crawlerUtil } = await import('./crawler/utils/crawlerUtil');
 
+    // ─── 워치독: 5분 동안 새 로그/작업 메시지가 없으면 브라우저 강제 종료 → 다음 사이클로 진행 ───
+    const HANG_THRESHOLD_MS = 5 * 60 * 1000; // 5분
+    const WATCHDOG_INTERVAL_MS = 30 * 1000; // 30초마다 검사
+    let lastActivityAt = Date.now();
+    let watchdogTimer: ReturnType<typeof setInterval> | null = null;
+    let watchdogClosing = false;
+
+    const noteActivity = () => {
+      lastActivityAt = Date.now();
+    };
+    const armWatchdog = () => {
+      if (watchdogTimer) return;
+      lastActivityAt = Date.now();
+      watchdogTimer = setInterval(async () => {
+        if (this.isStopping || watchdogClosing) return;
+        const idleMs = Date.now() - lastActivityAt;
+        if (idleMs >= HANG_THRESHOLD_MS) {
+          watchdogClosing = true;
+          this.sendLog(
+            `[감시] ${Math.round(HANG_THRESHOLD_MS / 60000)}분 동안 새 작업 메시지가 없습니다 → 브라우저 강제 종료 후 다음 사이클로 진행합니다.`,
+            'warn',
+          );
+          try {
+            await crawlerController.close();
+          } catch (e) {
+            console.error('[Worker] watchdog close 오류:', e);
+          }
+          // 강제 종료가 끝나면 활동시각을 갱신해 같은 사이클에서 중복 트리거되지 않게 함.
+          lastActivityAt = Date.now();
+          watchdogClosing = false;
+        }
+      }, WATCHDOG_INTERVAL_MS);
+    };
+    const disarmWatchdog = () => {
+      if (watchdogTimer) {
+        clearInterval(watchdogTimer);
+        watchdogTimer = null;
+      }
+    };
+
     crawlerUtil.setLogger((message: string) => {
+      noteActivity();
       this.currentTask = message.slice(0, 80);
       this.sendLog(message, 'info');
     });
+
+    armWatchdog();
 
     // 사이클을 자동 반복: 정지 요청이 오기 전까지 계속 돈다.
     // 서버 연결이 끊겨도 메모리에 보관된 settings/knowledges 로 사이클 반복이 가능하다.
@@ -322,6 +365,7 @@ export class WorkerClient extends EventEmitter {
     try {
       while (!this.isStopping) {
         cycleNo++;
+        noteActivity();
         this.sendLog(`\n========== 사이클 #${cycleNo} 시작 ==========\n`, 'info');
         try {
           await crawlerController.run({
@@ -329,6 +373,7 @@ export class WorkerClient extends EventEmitter {
             knowledges: this.knowledges,
             naverAccounts: this.naverAccounts,
             logFn: (message: string) => {
+              noteActivity();
               this.currentTask = message.slice(0, 80);
               const kwMatch = message.match(/키워드[:\s]*"?([^"]+)"?/);
               if (kwMatch) this.currentKeyword = kwMatch[1];
@@ -373,6 +418,7 @@ export class WorkerClient extends EventEmitter {
         }
       }
     } finally {
+      disarmWatchdog();
       this.isRunning = false;
       this.currentTask = null;
       this.currentKeyword = null;
