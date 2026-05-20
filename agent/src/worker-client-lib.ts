@@ -332,11 +332,22 @@ export class WorkerClient extends EventEmitter {
             `[감시] ${Math.round(HANG_THRESHOLD_MS / 60000)}분 동안 새 작업 메시지가 없습니다 → 브라우저 강제 종료 후 다음 사이클로 진행합니다.`,
             'warn',
           );
+          // close 자체가 hang 될 가능성을 대비해 15초 timeout race
           try {
-            await crawlerController.close();
+            await Promise.race([
+              crawlerController.close(),
+              new Promise<void>((_, reject) =>
+                setTimeout(() => reject(new Error('CLOSE_TIMEOUT')), 15000),
+              ),
+            ]);
           } catch (e) {
-            console.error('[Worker] watchdog close 오류:', e);
+            this.sendLog(
+              `[감시] 브라우저 종료 처리 중 문제: ${(e as Error).message} (다음 사이클은 계속 진행됩니다)`,
+              'error',
+            );
           }
+          // close 후에도 puppeteer await 가 깨어나려면 약간의 여유 필요
+          await new Promise((r) => setTimeout(r, 3000));
           // 강제 종료가 끝나면 활동시각을 갱신해 같은 사이클에서 중복 트리거되지 않게 함.
           lastActivityAt = Date.now();
           watchdogClosing = false;

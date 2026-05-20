@@ -164,6 +164,11 @@ class CrawlerUtil {
       });
       const page = (await browser.pages())[0];
 
+      // 모든 puppeteer 작업이 무한 대기에 빠지지 않도록 기본 timeout 적용.
+      // (예: page.waitForSelector, page.click, page.type 등이 30초 안에 끝나야 함)
+      page.setDefaultTimeout(30000);
+      page.setDefaultNavigationTimeout(60000);
+
       await page.evaluateOnNewDocument(() => {
         Object.defineProperty(navigator, 'webdriver', { get: () => false });
         (window as any).chrome = { runtime: {} };
@@ -369,9 +374,21 @@ class CrawlerUtil {
         return undefined;
       }
 
-      const newPagePromise = new Promise<Page | null>((x) =>
-        browser.once('targetcreated', (target) => x(target.page())),
-      );
+      // 새 탭이 안 열리는 경우(클릭이 무시되거나 팝업 차단 등) 영원히 대기하지 않도록 timeout 적용.
+      const NEW_PAGE_TIMEOUT_MS = 15000;
+      let onTargetCreated: ((target: any) => void) | null = null;
+      const newPagePromise = new Promise<Page | null>((resolve) => {
+        const timer = setTimeout(() => {
+          if (onTargetCreated) browser.off('targetcreated', onTargetCreated);
+          this.log(`새 탭이 ${NEW_PAGE_TIMEOUT_MS / 1000}초 내에 열리지 않았습니다 → 다음 단계로 진행합니다.`);
+          resolve(null);
+        }, NEW_PAGE_TIMEOUT_MS);
+        onTargetCreated = (target: any) => {
+          clearTimeout(timer);
+          Promise.resolve(target.page()).then(resolve, () => resolve(null));
+        };
+        browser.once('targetcreated', onTargetCreated);
+      });
       await page.evaluateHandle((el: any) => { el.target = '_blank'; }, link);
       await link.click();
       const newPage = await newPagePromise;
