@@ -1,6 +1,6 @@
 // SQLite ↔ 도메인 객체 매핑. 한 곳에 모아두면 라우트가 매우 단순해진다.
 import { db } from './db';
-import type { Knowledge, NaverAccount, Settings, LogEntry, LogLevel, KeywordGroup, Worker, Product } from '@shared/types';
+import type { Knowledge, NaverAccount, Settings, LogEntry, LogLevel, KeywordGroup, Worker, Product, FailedKeyword } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/types';
 import { uid } from 'uid';
 
@@ -307,5 +307,85 @@ export const workerLogsRepo = {
     } else {
       db().prepare(`DELETE FROM worker_logs`).run();
     }
+  },
+};
+
+// ──────────────── failed_keywords ────────────────
+function rowToFailedKeyword(r: any): FailedKeyword {
+  return {
+    id: r.id,
+    workerId: r.worker_id,
+    workerName: r.worker_name,
+    keyword: r.keyword,
+    itemName: r.item_name,
+    purchaseName: r.purchase_name ?? undefined,
+    groupName: r.group_name ?? undefined,
+    pagesScanned: r.pages_scanned,
+    reason: r.reason,
+    createdAt: r.created_at,
+  };
+}
+
+export const failedKeywordsRepo = {
+  list(limit = 2000, workerId?: string): FailedKeyword[] {
+    let rows: any[];
+    if (workerId) {
+      rows = db()
+        .prepare(`SELECT * FROM failed_keywords WHERE worker_id = ? ORDER BY id DESC LIMIT ?`)
+        .all(workerId, limit) as any[];
+    } else {
+      rows = db()
+        .prepare(`SELECT * FROM failed_keywords ORDER BY id DESC LIMIT ?`)
+        .all(limit) as any[];
+    }
+    return rows.map(rowToFailedKeyword);
+  },
+  append(
+    workerId: string,
+    workerName: string,
+    keyword: string,
+    itemName: string,
+    purchaseName: string | undefined,
+    groupName: string | undefined,
+    pagesScanned: number,
+    reason: string,
+  ): FailedKeyword {
+    const now = Date.now();
+    const info = db()
+      .prepare(
+        `INSERT INTO failed_keywords(worker_id, worker_name, keyword, item_name, purchase_name, group_name, pages_scanned, reason, created_at)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(workerId, workerName, keyword, itemName, purchaseName ?? null, groupName ?? null, pagesScanned, reason, now);
+    // 워커별 최근 2000건 유지
+    db()
+      .prepare(
+        `DELETE FROM failed_keywords WHERE worker_id = ? AND id NOT IN (
+           SELECT id FROM failed_keywords WHERE worker_id = ? ORDER BY id DESC LIMIT 2000
+         )`,
+      )
+      .run(workerId, workerId);
+    return {
+      id: Number(info.lastInsertRowid),
+      workerId,
+      workerName,
+      keyword,
+      itemName,
+      purchaseName,
+      groupName,
+      pagesScanned,
+      reason,
+      createdAt: now,
+    };
+  },
+  clear(workerId?: string) {
+    if (workerId) {
+      db().prepare(`DELETE FROM failed_keywords WHERE worker_id = ?`).run(workerId);
+    } else {
+      db().prepare(`DELETE FROM failed_keywords`).run();
+    }
+  },
+  remove(id: number) {
+    db().prepare(`DELETE FROM failed_keywords WHERE id = ?`).run(id);
   },
 };

@@ -132,4 +132,25 @@ function migrate(db: Database.Database) {
     `);
     db.prepare(`UPDATE schema_version SET version = 6`).run();
   }
+
+  const current7 = (db.prepare(`SELECT version FROM schema_version`).get() as { version: number }).version;
+  if (current7 < 7) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS failed_keywords (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        worker_id TEXT NOT NULL,
+        worker_name TEXT NOT NULL,
+        keyword TEXT NOT NULL,
+        item_name TEXT NOT NULL,
+        purchase_name TEXT,
+        group_name TEXT,
+        pages_scanned INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX idx_failed_keywords_worker_id ON failed_keywords(worker_id);
+      CREATE INDEX idx_failed_keywords_created_at ON failed_keywords(created_at);
+    `);
+    db.prepare(`UPDATE schema_version SET version = 7`).run();
+  }
 }

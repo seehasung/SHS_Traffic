@@ -21,7 +21,7 @@ import {
   verifyWorkerLogin,
 } from './auth';
 import type { SessionPayload } from './auth';
-import { keywordGroupsRepo, knowledgesRepo, naverAccountsRepo, settingsRepo, logsRepo, workersRepo, productsRepo, workerLogsRepo } from './repos';
+import { keywordGroupsRepo, knowledgesRepo, naverAccountsRepo, settingsRepo, logsRepo, workersRepo, productsRepo, workerLogsRepo, failedKeywordsRepo } from './repos';
 import { runner } from './runner';
 import { staticWebDir } from './paths';
 
@@ -406,6 +406,25 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     res.json({ ok: true });
   });
 
+  // ──────────────── failed keywords (50페이지까지 못 찾은 키워드 영구 저장) ────────────────
+  app.get(API.workerFailedKeywords, (req, res) => {
+    const workerId = (req.query.workerId as string | undefined) || undefined;
+    const limit = Math.min(parseInt((req.query.limit as string) || '2000', 10) || 2000, 5000);
+    const items = failedKeywordsRepo.list(limit, workerId);
+    res.json({ items });
+  });
+  app.delete(API.workerFailedKeywords, (req, res) => {
+    const workerId = (req.query.workerId as string | undefined) || undefined;
+    failedKeywordsRepo.clear(workerId);
+    res.json({ ok: true });
+  });
+  app.delete(`${API.workerFailedKeywords}/:id`, (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'INVALID_ID' });
+    failedKeywordsRepo.remove(id);
+    res.json({ ok: true });
+  });
+
   // ──────────────── 정적 파일 서빙 ────────────────
   const webDir = staticWebDir();
   if (webDir) {
@@ -559,6 +578,22 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
             workerName,
             entry,
           });
+        }
+
+        if (msg.type === 'worker:failed-keyword') {
+          const worker = workersRepo.list().find((w) => w.id === authenticatedWorkerId);
+          const workerName = worker?.name ?? 'Unknown';
+          const failed = failedKeywordsRepo.append(
+            authenticatedWorkerId,
+            workerName,
+            msg.keyword,
+            msg.itemName,
+            msg.purchaseName,
+            msg.groupName,
+            msg.pagesScanned,
+            msg.reason,
+          );
+          broadcastDashboard({ type: 'worker:failed-keyword', failed });
         }
 
         if (msg.type === 'worker:request-start') {

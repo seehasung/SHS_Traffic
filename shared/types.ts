@@ -168,6 +168,20 @@ export interface LogEntry {
   createdAt: number;
 }
 
+/** 50페이지까지 찾았는데 못 찾고 다음 상품으로 넘어간 키워드 기록. */
+export interface FailedKeyword {
+  id: number;
+  workerId: string;
+  workerName: string;
+  keyword: string;
+  itemName: string;
+  purchaseName?: string;
+  groupName?: string;
+  pagesScanned: number;
+  reason: string;
+  createdAt: number;
+}
+
 /** WebSocket 으로 흐르는 메시지 종류. */
 export type ServerMessage =
   | { type: 'log'; entry: LogEntry }
@@ -175,7 +189,8 @@ export type ServerMessage =
   | { type: 'log:cleared' }
   | { type: 'worker:status'; status: WorkerStatus }
   | { type: 'worker:status:all'; statuses: WorkerStatus[] }
-  | { type: 'worker:log'; workerId: string; workerName: string; entry: LogEntry };
+  | { type: 'worker:log'; workerId: string; workerName: string; entry: LogEntry }
+  | { type: 'worker:failed-keyword'; failed: FailedKeyword };
 
 export type ClientMessage = { type: 'subscribe' };
 
@@ -185,7 +200,16 @@ export type WorkerMessage =
   | { type: 'worker:heartbeat'; ipAddress: string; cpuUsage: number; ramUsage: number; currentTask: string | null; currentKeyword: string | null; currentProductId: string | null; progressCount: number; runnerStatus: RunnerStatus }
   | { type: 'worker:log'; message: string; level: LogLevel }
   | { type: 'worker:request-start' }
-  | { type: 'worker:request-stop' };
+  | { type: 'worker:request-stop' }
+  | {
+      type: 'worker:failed-keyword';
+      keyword: string;
+      itemName: string;
+      purchaseName?: string;
+      groupName?: string;
+      pagesScanned: number;
+      reason: string;
+    };
 
 /** 서버 → 워커 WebSocket 메시지. */
 export type ServerToWorkerMessage =

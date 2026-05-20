@@ -208,6 +208,7 @@ class KnowledgeService {
   ): Promise<{
     shoppingResultPage?: Page; shoppingDetailPage?: Page;
     purchaseDetailPage?: Page; totalShoppingDetailPage?: Page;
+    failed?: { pagesScanned: number; reason: string };
   }> {
     let isPc = setting.pageType === 'pc';
     let isMobile = setting.pageType === 'mobile';
@@ -257,7 +258,10 @@ class KnowledgeService {
     let totalShoppingDetailPage: Page | undefined;
 
     const MAX_PAGES = 50;
+    let pagesScanned = 0;
+    let failReason: string | null = null;
     for (let i = 0; i < MAX_PAGES; i++) {
+      pagesScanned = i + 1;
       if (i === 0) {
         await crawlerUtil.waitRandom(shoppingResultPage, 2, 5).catch(console.error);
       } else {
@@ -277,6 +281,7 @@ class KnowledgeService {
       if (!isFoundTarget) {
         if (i >= MAX_PAGES - 1) {
           crawlerUtil.log(`${MAX_PAGES}페이지까지 상품을 찾지 못했습니다. 다음 상품으로 넘어갑니다.`);
+          failReason = `${MAX_PAGES}페이지까지 상품을 찾지 못함`;
           break;
         }
         crawlerUtil.log('상품을 찾지 못해서 다음 페이지로 넘어가겠습니다.');
@@ -284,6 +289,7 @@ class KnowledgeService {
           await this._clickNextPageInShoppingResultPage(shoppingResultPage, setting);
         } catch {
           crawlerUtil.log('더 이상 다음 페이지가 없습니다. 다음 상품으로 넘어갑니다.');
+          failReason = `${pagesScanned}페이지에서 다음 페이지 없음`;
           break;
         }
         continue;
@@ -322,7 +328,10 @@ class KnowledgeService {
       }
     }
 
-    return { shoppingResultPage };
+    return {
+      shoppingResultPage,
+      failed: { pagesScanned, reason: failReason ?? '상품을 찾지 못함' },
+    };
   }
 
   async 클린로직(params: {

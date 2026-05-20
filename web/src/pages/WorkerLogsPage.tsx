@@ -9,9 +9,24 @@ import {
   Stack,
   Tag,
   Text,
+  Modal,
+  ModalBody,
+  ModalCloseButton,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalOverlay,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
+  useDisclosure,
+  IconButton,
 } from '@chakra-ui/react';
 import { WS_PATH } from '@shared/api';
-import type { LogLevel, ServerMessage } from '@shared/types';
+import type { FailedKeyword, LogLevel, ServerMessage } from '@shared/types';
 import { api } from '../api';
 
 interface WorkerLog {
@@ -47,6 +62,8 @@ export default function WorkerLogsPage() {
   const [selectedWorker, setSelectedWorker] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [failedKeywords, setFailedKeywords] = useState<FailedKeyword[]>([]);
+  const { isOpen: isFailedOpen, onOpen: openFailed, onClose: closeFailed } = useDisclosure();
   const logContainerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -54,9 +71,10 @@ export default function WorkerLogsPage() {
   const loadInitialData = useCallback(async () => {
     setLoading(true);
     try {
-      const [workers, savedLogs] = await Promise.all([
+      const [workers, savedLogs, savedFailed] = await Promise.all([
         api.workers.list().catch(() => []),
         api.workerLogs.list(undefined, 1000).catch(() => []),
+        api.workerFailedKeywords.list(undefined, 2000).catch(() => []),
       ]);
       setWorkerList(workers.map((w) => ({ id: w.id, name: w.name, progressCount: 0 })));
       setLogs(savedLogs.map((l) => ({
@@ -67,6 +85,7 @@ export default function WorkerLogsPage() {
         level: l.level,
         createdAt: l.createdAt,
       })));
+      setFailedKeywords(savedFailed as FailedKeyword[]);
     } finally {
       setLoading(false);
     }
@@ -132,6 +151,13 @@ export default function WorkerLogsPage() {
               return [...prev, { id: s.workerId, name: s.workerName, progressCount: s.progressCount }];
             });
           }
+          if (msg.type === 'worker:failed-keyword') {
+            setFailedKeywords((prev) => {
+              const next = [msg.failed, ...prev];
+              if (next.length > 3000) next.length = 3000;
+              return next;
+            });
+          }
         } catch { /* ignore */ }
       };
     };
@@ -154,6 +180,21 @@ export default function WorkerLogsPage() {
     }
   }, [selectedWorker]);
 
+  const clearFailed = useCallback(async () => {
+    if (!confirm(selectedWorker ? '선택된 워커의 실패 키워드를 모두 삭제하시겠습니까?' : '모든 워커의 실패 키워드를 모두 삭제하시겠습니까?')) return;
+    await api.workerFailedKeywords.clear(selectedWorker || undefined);
+    if (selectedWorker) {
+      setFailedKeywords((prev) => prev.filter((f) => f.workerId !== selectedWorker));
+    } else {
+      setFailedKeywords([]);
+    }
+  }, [selectedWorker]);
+
+  const removeFailed = useCallback(async (id: number) => {
+    await api.workerFailedKeywords.remove(id);
+    setFailedKeywords((prev) => prev.filter((f) => f.id !== id));
+  }, []);
+
   useEffect(() => {
     const el = logContainerRef.current;
     if (el) {
@@ -166,6 +207,13 @@ export default function WorkerLogsPage() {
     return logs.filter((l) => l.workerId === selectedWorker);
   }, [logs, selectedWorker]);
 
+  const filteredFailed = useMemo(() => {
+    if (selectedWorker === null) return failedKeywords;
+    return failedKeywords.filter((f) => f.workerId === selectedWorker);
+  }, [failedKeywords, selectedWorker]);
+
+  const failedCount = filteredFailed.length;
+
   return (
     <Stack spacing={5}>
       <HStack>
@@ -173,6 +221,10 @@ export default function WorkerLogsPage() {
         <Badge colorScheme={connected ? 'green' : 'gray'}>{connected ? '연결됨' : '연결 끊김'}</Badge>
         {loading && <Badge colorScheme="blue">불러오는 중...</Badge>}
         <Box flex={1} />
+        <Button size="sm" onClick={openFailed} colorScheme="red" variant="solid">
+          실패 로그 보기
+          {failedCount > 0 && <Badge ml={2} colorScheme="whiteAlpha" variant="solid" color="red.500" bg="white">{failedCount}</Badge>}
+        </Button>
         <Button size="sm" onClick={loadInitialData} variant="outline">새로고침</Button>
         <Button size="sm" onClick={clearLogs} colorScheme="red" variant="outline">
           {selectedWorker ? '선택 워커 로그 삭제' : '전체 로그 삭제'}
@@ -233,6 +285,81 @@ export default function WorkerLogsPage() {
           )}
         </Box>
       </Flex>
+
+      <Modal isOpen={isFailedOpen} onClose={closeFailed} size="6xl" scrollBehavior="inside">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            <HStack>
+              <Text>실패 키워드 / 상품 내역</Text>
+              <Badge colorScheme="red">{filteredFailed.length}</Badge>
+              {selectedWorker && (
+                <Tag size="sm" colorScheme="teal">
+                  워커: {workerList.find((w) => w.id === selectedWorker)?.name ?? selectedWorker}
+                </Tag>
+              )}
+            </HStack>
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            {filteredFailed.length === 0 ? (
+              <Flex h="200px" align="center" justify="center">
+                <Text color="gray.400">실패한 키워드가 없습니다</Text>
+              </Flex>
+            ) : (
+              <Table size="sm" variant="simple">
+                <Thead position="sticky" top={0} bg="white" zIndex={1}>
+                  <Tr>
+                    <Th>발생시각</Th>
+                    <Th>워커</Th>
+                    <Th>그룹</Th>
+                    <Th>키워드</Th>
+                    <Th>상품번호</Th>
+                    <Th>판매처</Th>
+                    <Th isNumeric>검색 페이지</Th>
+                    <Th>사유</Th>
+                    <Th></Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {filteredFailed.map((f) => (
+                    <Tr key={f.id}>
+                      <Td whiteSpace="nowrap" fontSize="xs" color="gray.500">
+                        {new Date(f.createdAt).toLocaleString()}
+                      </Td>
+                      <Td><Tag size="sm" colorScheme="teal">{f.workerName}</Tag></Td>
+                      <Td>{f.groupName ?? '-'}</Td>
+                      <Td fontWeight="600">{f.keyword}</Td>
+                      <Td><code>{f.itemName}</code></Td>
+                      <Td>{f.purchaseName ?? '-'}</Td>
+                      <Td isNumeric>
+                        <Badge colorScheme="orange">{f.pagesScanned}</Badge>
+                      </Td>
+                      <Td fontSize="xs" color="red.600">{f.reason}</Td>
+                      <Td>
+                        <IconButton
+                          aria-label="삭제"
+                          size="xs"
+                          variant="ghost"
+                          colorScheme="red"
+                          icon={<Text fontSize="md">×</Text>}
+                          onClick={() => removeFailed(f.id)}
+                        />
+                      </Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button mr={3} colorScheme="red" variant="outline" onClick={clearFailed} isDisabled={filteredFailed.length === 0}>
+              {selectedWorker ? '선택 워커 실패 전체 삭제' : '전체 실패 삭제'}
+            </Button>
+            <Button onClick={closeFailed}>닫기</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </Stack>
   );
 }

@@ -7,12 +7,23 @@ import { knowledgeService } from './services/knowledgeService';
 import { NAVER_URL } from './constants/urls';
 import type { Knowledge, NaverAccount, Settings } from '@shared/types';
 
+export interface FailedKeywordInfo {
+  keyword: string;
+  itemName: string;
+  purchaseName?: string;
+  groupName?: string;
+  pagesScanned: number;
+  reason: string;
+}
+
 export interface CrawlJobParams {
   settings: Settings;
   knowledges: Knowledge[];
   naverAccounts: NaverAccount[];
   logFn: LogFn;
   shouldStop: () => boolean;
+  /** 50페이지까지 못 찾고 다음 상품으로 넘어간 키워드를 외부에 알리는 콜백. */
+  onFailedKeyword?: (info: FailedKeywordInfo) => void;
 }
 
 class CrawlerController {
@@ -24,9 +35,12 @@ class CrawlerController {
   private shoppingDetailPage?: Page;
   private purchaseDetailPage?: Page;
 
+  private onFailedKeyword?: (info: FailedKeywordInfo) => void;
+
   async run(params: CrawlJobParams): Promise<void> {
     const { settings, knowledges, naverAccounts, logFn, shouldStop } = params;
     crawlerUtil.setLogger(logFn);
+    this.onFailedKeyword = params.onFailedKeyword;
 
     if (!knowledges.length) {
       logFn('작업할 키워드가 없습니다. 키워드를 추가해주세요.');
@@ -184,6 +198,23 @@ class CrawlerController {
 
     const result = await knowledgeService.findPages(this.browser, this.page, settings, settings, keyword, knowledge.itemName, knowledge.purchaseName);
     if (!result) return false;
+
+    // 50페이지까지 못 찾았거나 다음 페이지가 없어 종료된 케이스 → 실패 보고
+    if (result.failed) {
+      try {
+        this.onFailedKeyword?.({
+          keyword: knowledge.keyword,
+          itemName: knowledge.itemName,
+          purchaseName: knowledge.purchaseName,
+          groupName: knowledge.groupName,
+          pagesScanned: result.failed.pagesScanned,
+          reason: result.failed.reason,
+        });
+      } catch (e) {
+        console.error('[crawler] onFailedKeyword 콜백 오류:', e);
+      }
+      return false;
+    }
 
     const { shoppingResultPage, shoppingDetailPage, purchaseDetailPage, totalShoppingDetailPage } = result;
     this.shoppingResultPage = shoppingResultPage;

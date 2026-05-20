@@ -126,6 +126,32 @@ export const api = {
       return call<{ ok: true }>('DELETE', `/api/worker-logs${qs}`);
     },
   },
+  workerFailedKeywords: {
+    list: (workerId?: string, limit = 2000) => {
+      const qs = new URLSearchParams();
+      if (workerId) qs.set('workerId', workerId);
+      qs.set('limit', String(limit));
+      return call<{
+        items: {
+          id: number;
+          workerId: string;
+          workerName: string;
+          keyword: string;
+          itemName: string;
+          purchaseName?: string;
+          groupName?: string;
+          pagesScanned: number;
+          reason: string;
+          createdAt: number;
+        }[];
+      }>('GET', `/api/worker-failed-keywords?${qs.toString()}`).then((r) => r.items);
+    },
+    clear: (workerId?: string) => {
+      const qs = workerId ? `?workerId=${encodeURIComponent(workerId)}` : '';
+      return call<{ ok: true }>('DELETE', `/api/worker-failed-keywords${qs}`);
+    },
+    remove: (id: number) => call<{ ok: true }>('DELETE', `/api/worker-failed-keywords/${id}`),
+  },
 };
 
 export { ApiError };

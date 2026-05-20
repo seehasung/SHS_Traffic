@@ -22,7 +22,17 @@ interface PendingLog {
   timestamp: number;
 }
 
+interface PendingFailedKeyword {
+  keyword: string;
+  itemName: string;
+  purchaseName?: string;
+  groupName?: string;
+  pagesScanned: number;
+  reason: string;
+}
+
 const MAX_PENDING_LOGS = 5000;
+const MAX_PENDING_FAILED = 2000;
 
 export class WorkerClient extends EventEmitter {
   private ws: WebSocket | null = null;
@@ -42,6 +52,7 @@ export class WorkerClient extends EventEmitter {
   private currentProductId: string | null = null;
   private currentTask: string | null = null;
   private pendingLogs: PendingLog[] = [];
+  private pendingFailedKeywords: PendingFailedKeyword[] = [];
   private cacheFile: string | null = null;
   private isAuthenticated = false;
   private wsPingTimer: ReturnType<typeof setInterval> | null = null;
@@ -249,8 +260,9 @@ export class WorkerClient extends EventEmitter {
         this.startHeartbeat();
         this.emit('connected');
         this.emit('knowledges', this.knowledges);
-        // 끊어져 있던 동안 쌓인 로그를 모두 서버로 전송
+        // 끊어져 있던 동안 쌓인 로그/실패 키워드를 모두 서버로 전송
         this.flushPendingLogs();
+        this.flushPendingFailedKeywords();
         // 재연결 시 현재 워커 상태도 즉시 한 번 동기화
         this.sendHeartbeat();
         break;
@@ -324,6 +336,14 @@ export class WorkerClient extends EventEmitter {
               this.sendLog(message, 'info');
             },
             shouldStop: () => this.isStopping,
+            onFailedKeyword: (info) => {
+              // 끊겨 있어도 큐잉되므로 항상 보고
+              this.sendFailedKeyword(info);
+              this.sendLog(
+                `[실패] 키워드 "${info.keyword}" 상품번호 "${info.itemName}" — ${info.reason} (${info.pagesScanned}페이지 검색)`,
+                'warn',
+              );
+            },
           });
         } catch (e: any) {
           const msg = e?.message || String(e);
@@ -394,6 +414,58 @@ export class WorkerClient extends EventEmitter {
     if (this.pendingLogs.length > MAX_PENDING_LOGS) {
       // 너무 오래된 로그는 버려 메모리 폭주 방지
       this.pendingLogs.splice(0, this.pendingLogs.length - MAX_PENDING_LOGS);
+    }
+  }
+
+  /**
+   * 50페이지까지 못 찾고 다음 상품으로 넘어간 키워드를 서버로 보고한다.
+   * 서버 연결이 끊겨 있으면 큐에 쌓아뒀다가 재연결 시 flush.
+   */
+  sendFailedKeyword(info: PendingFailedKeyword) {
+    if (this.ws?.readyState === WebSocket.OPEN && this.isAuthenticated) {
+      try {
+        const msg: WorkerMessage = {
+          type: 'worker:failed-keyword',
+          keyword: info.keyword,
+          itemName: info.itemName,
+          purchaseName: info.purchaseName,
+          groupName: info.groupName,
+          pagesScanned: info.pagesScanned,
+          reason: info.reason,
+        };
+        this.ws.send(JSON.stringify(msg));
+        return;
+      } catch {
+        // 전송 실패 → 큐로
+      }
+    }
+    this.pendingFailedKeywords.push(info);
+    if (this.pendingFailedKeywords.length > MAX_PENDING_FAILED) {
+      this.pendingFailedKeywords.splice(0, this.pendingFailedKeywords.length - MAX_PENDING_FAILED);
+    }
+  }
+
+  private flushPendingFailedKeywords() {
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    if (this.pendingFailedKeywords.length === 0) return;
+    const batch = this.pendingFailedKeywords.splice(0);
+    console.log(`[Worker] 큐에 쌓인 ${batch.length}건의 실패 키워드를 서버로 재전송합니다.`);
+    for (const info of batch) {
+      try {
+        const msg: WorkerMessage = {
+          type: 'worker:failed-keyword',
+          keyword: info.keyword,
+          itemName: info.itemName,
+          purchaseName: info.purchaseName,
+          groupName: info.groupName,
+          pagesScanned: info.pagesScanned,
+          reason: info.reason,
+        };
+        this.ws.send(JSON.stringify(msg));
+      } catch {
+        this.pendingFailedKeywords.unshift(info);
+        break;
+      }
     }
   }
 

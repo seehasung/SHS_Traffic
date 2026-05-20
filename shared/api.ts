@@ -22,6 +22,7 @@ export const API = {
   products: '/api/products',
   product: (id: string) => `/api/products/${encodeURIComponent(id)}`,
   workerLogs: '/api/workers/logs',
+  workerFailedKeywords: '/api/worker-failed-keywords',
 
   workers: '/api/workers',
   worker: (id: string) => `/api/workers/${encodeURIComponent(id)}`,
