@@ -5,6 +5,8 @@ export type WorkType = 'pc' | 'mobile';
 export type LogicType = 'clean' | 'detail' | 'hidden';
 export type YN = 'Y' | 'N';
 export type PageType = 'pc' | 'mobile' | 'random';
+/** 키워드 동작 모드: 쇼핑 상위노출 vs 블로그/사이트 상위노출. */
+export type KnowledgeMode = 'shopping' | 'blog';
 
 /** 로컬 사용자. 단일 사용자가 일반적이지만 멀티유저도 지원. */
 export interface UserAccount {
@@ -28,9 +30,14 @@ export interface KeywordGroup {
 export interface Knowledge {
   id: string;
   keyword: string;
+  /** 쇼핑 모드: 상품번호, 블로그 모드: 블로그 글 URL 또는 제목 일부. */
   itemName: string;
   purchaseName?: string;
   groupName?: string;
+  /** shopping = 쇼핑 상위노출, blog = 블로그/사이트 상위노출. 기본 shopping. */
+  mode: KnowledgeMode;
+  /** 블로그 모드 전용: 검색 결과에서 매칭할 사이트 URL 또는 제목 부분문자열. */
+  siteUrl?: string;
   /** 활성 여부. false 면 워커가 이 키워드를 작업하지 않는다. 기본 true. */
   isActive: boolean;
   createdAt: number;

@@ -136,6 +136,8 @@ function rowToKnowledge(r: any): Knowledge {
     itemName: r.item_name,
     purchaseName: r.purchase_name ?? undefined,
     groupName: r.group_name ?? undefined,
+    mode: r.mode === 'blog' ? 'blog' : 'shopping',
+    siteUrl: r.site_url ?? undefined,
     isActive: r.is_active === undefined || r.is_active === null ? true : !!r.is_active,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -165,12 +167,15 @@ export const knowledgesRepo = {
         : input.isActive
         ? 1
         : 0;
+    const mode = input.mode ?? 'shopping';
+    const siteUrl = input.siteUrl ?? null;
     db()
       .prepare(
-        `INSERT INTO knowledges(id, keyword, item_name, purchase_name, group_name, is_active, created_at, updated_at)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO knowledges(id, keyword, item_name, purchase_name, group_name, mode, site_url, is_active, created_at, updated_at)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET keyword=excluded.keyword, item_name=excluded.item_name,
            purchase_name=excluded.purchase_name, group_name=excluded.group_name,
+           mode=excluded.mode, site_url=excluded.site_url,
            is_active=excluded.is_active, updated_at=excluded.updated_at`,
       )
       .run(
@@ -179,6 +184,8 @@ export const knowledgesRepo = {
         input.itemName,
         input.purchaseName ?? null,
         input.groupName ?? null,
+        mode,
+        siteUrl,
         isActiveInt,
         createdAt,
         now,

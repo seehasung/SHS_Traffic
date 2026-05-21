@@ -33,7 +33,7 @@ import {
   Tag,
 } from '@chakra-ui/react';
 import { FiTrash2, FiPlus } from 'react-icons/fi';
-import type { Knowledge, KeywordGroup, Worker, Product } from '@shared/types';
+import type { Knowledge, KeywordGroup, Worker, Product, KnowledgeMode } from '@shared/types';
 import { api } from '@/api';
 import { useRef } from 'react';
 
@@ -45,7 +45,7 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedWorkerForGroup, setSelectedWorkerForGroup] = useState('');
-  const [draft, setDraft] = useState({ keyword: '', itemName: '', productName: '' });
+  const [draft, setDraft] = useState({ keyword: '', itemName: '', productName: '', mode: 'shopping' as KnowledgeMode, siteUrl: '' });
   const [productQuery, setProductQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
@@ -236,17 +236,23 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
       toast({ title: '먼저 그룹을 선택해주세요', status: 'warning', position: 'top' });
       return;
     }
-    if (!draft.keyword || !draft.itemName) {
+    if (draft.mode === 'shopping' && (!draft.keyword || !draft.itemName)) {
       toast({ title: '키워드와 상품번호는 필수입니다', status: 'warning', position: 'top' });
+      return;
+    }
+    if (draft.mode === 'blog' && (!draft.keyword || !draft.siteUrl)) {
+      toast({ title: '키워드와 사이트 URL/제목은 필수입니다', status: 'warning', position: 'top' });
       return;
     }
     await api.knowledges.upsert({
       keyword: draft.keyword.trim(),
-      itemName: draft.itemName.trim(),
-      purchaseName: draft.productName.trim() || productQuery.trim() || undefined,
+      itemName: draft.mode === 'blog' ? (draft.siteUrl.trim()) : draft.itemName.trim(),
+      purchaseName: draft.mode === 'shopping' ? (draft.productName.trim() || productQuery.trim() || undefined) : undefined,
       groupName: selectedGroupName,
+      mode: draft.mode,
+      siteUrl: draft.mode === 'blog' ? draft.siteUrl.trim() : undefined,
     });
-    setDraft({ keyword: '', itemName: '', productName: '' });
+    setDraft({ keyword: '', itemName: '', productName: '', mode: draft.mode, siteUrl: '' });
     setProductQuery('');
     refreshKnowledges();
   };
@@ -383,6 +389,17 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
               </Flex>
 
               <Box mb={4}>
+                <HStack spacing={2} mb={2}>
+                  <Select
+                    w="140px"
+                    size="sm"
+                    value={draft.mode}
+                    onChange={(e) => setDraft({ ...draft, mode: e.target.value as KnowledgeMode })}
+                  >
+                    <option value="shopping">쇼핑 모드</option>
+                    <option value="blog">블로그 모드</option>
+                  </Select>
+                </HStack>
                 <HStack spacing={2}>
                   <Input
                     flex={1}
@@ -391,45 +408,57 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
                     onChange={(e) => setDraft({ ...draft, keyword: e.target.value })}
                     onKeyDown={(e) => e.key === 'Enter' && addKnowledge()}
                   />
-                  <Box position="relative" flex={1.5} minW="200px">
-                    <Input
-                      placeholder="상품명 검색 (자동완성)"
-                      value={productQuery}
-                      onChange={(e) => { setProductQuery(e.target.value); setShowSuggestions(true); }}
-                      onFocus={() => setShowSuggestions(true)}
-                      onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                    />
-                    {showSuggestions && suggestions.length > 0 && (
-                      <Box position="absolute" top="100%" left={0} right={0} zIndex={20} bg="white" borderWidth="1px" borderRadius="md" shadow="lg" maxH="200px" overflowY="auto">
-                        {suggestions.map((p) => (
-                          <Box
-                            key={p.id}
-                            px={3}
-                            py={2}
-                            cursor="pointer"
-                            _hover={{ bg: 'blue.50' }}
-                            onClick={() => {
-                              setDraft({ ...draft, itemName: p.productNumber, productName: p.productName });
-                              setProductQuery(p.productName);
-                              setShowSuggestions(false);
-                            }}
-                          >
-                            <Text fontSize="sm">
-                              {highlightMatch(p.productName, productQuery)}{' '}
-                              <Text as="span" color="gray.400">({highlightMatch(p.productNumber, productQuery)})</Text>
-                            </Text>
+                  {draft.mode === 'shopping' ? (
+                    <>
+                      <Box position="relative" flex={1.5} minW="200px">
+                        <Input
+                          placeholder="상품명 검색 (자동완성)"
+                          value={productQuery}
+                          onChange={(e) => { setProductQuery(e.target.value); setShowSuggestions(true); }}
+                          onFocus={() => setShowSuggestions(true)}
+                          onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                        />
+                        {showSuggestions && suggestions.length > 0 && (
+                          <Box position="absolute" top="100%" left={0} right={0} zIndex={20} bg="white" borderWidth="1px" borderRadius="md" shadow="lg" maxH="200px" overflowY="auto">
+                            {suggestions.map((p) => (
+                              <Box
+                                key={p.id}
+                                px={3}
+                                py={2}
+                                cursor="pointer"
+                                _hover={{ bg: 'blue.50' }}
+                                onClick={() => {
+                                  setDraft({ ...draft, itemName: p.productNumber, productName: p.productName });
+                                  setProductQuery(p.productName);
+                                  setShowSuggestions(false);
+                                }}
+                              >
+                                <Text fontSize="sm">
+                                  {highlightMatch(p.productName, productQuery)}{' '}
+                                  <Text as="span" color="gray.400">({highlightMatch(p.productNumber, productQuery)})</Text>
+                                </Text>
+                              </Box>
+                            ))}
                           </Box>
-                        ))}
+                        )}
                       </Box>
-                    )}
-                  </Box>
-                  <Input
-                    flex={1}
-                    placeholder="상품번호"
-                    value={draft.itemName}
-                    onChange={(e) => setDraft({ ...draft, itemName: e.target.value })}
-                    onKeyDown={(e) => e.key === 'Enter' && addKnowledge()}
-                  />
+                      <Input
+                        flex={1}
+                        placeholder="상품번호"
+                        value={draft.itemName}
+                        onChange={(e) => setDraft({ ...draft, itemName: e.target.value })}
+                        onKeyDown={(e) => e.key === 'Enter' && addKnowledge()}
+                      />
+                    </>
+                  ) : (
+                    <Input
+                      flex={2}
+                      placeholder="사이트 URL 또는 제목 일부 (매칭용)"
+                      value={draft.siteUrl}
+                      onChange={(e) => setDraft({ ...draft, siteUrl: e.target.value })}
+                      onKeyDown={(e) => e.key === 'Enter' && addKnowledge()}
+                    />
+                  )}
                   <Button onClick={addKnowledge} colorScheme="blue" px={6} flexShrink={0}>
                     추가
                   </Button>
@@ -441,9 +470,10 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
                   <Thead bg="gray.50">
                     <Tr>
                       <Th w="70px" textAlign="center">활성</Th>
+                      <Th w="70px" textAlign="center">모드</Th>
                       <Th>키워드</Th>
-                      <Th>상품명</Th>
-                      <Th>상품번호</Th>
+                      <Th>상품명/사이트</Th>
+                      <Th>상품번호/URL</Th>
                       <Th>등록일</Th>
                       <Th w="40px"></Th>
                     </Tr>
@@ -451,6 +481,7 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
                   <Tbody>
                     {items.map((k) => {
                       const active = k.isActive ?? true;
+                      const isBlog = (k.mode ?? 'shopping') === 'blog';
                       return (
                         <Tr key={k.id} bg={active ? undefined : 'gray.50'} opacity={active ? 1 : 0.65}>
                           <Td textAlign="center">
@@ -466,14 +497,19 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
                               />
                             </Tooltip>
                           </Td>
+                          <Td textAlign="center">
+                            <Badge colorScheme={isBlog ? 'purple' : 'green'} fontSize="2xs">
+                              {isBlog ? '블로그' : '쇼핑'}
+                            </Badge>
+                          </Td>
                           <Td>
                             <HStack spacing={2}>
                               <Text textDecoration={active ? 'none' : 'line-through'}>{k.keyword}</Text>
                               {!active && <Badge colorScheme="red" fontSize="2xs">OFF</Badge>}
                             </HStack>
                           </Td>
-                          <Td>{k.purchaseName || '-'}</Td>
-                          <Td>{k.itemName}</Td>
+                          <Td>{isBlog ? (k.siteUrl || k.itemName) : (k.purchaseName || '-')}</Td>
+                          <Td>{isBlog ? '-' : k.itemName}</Td>
                           <Td>{new Date(k.createdAt).toLocaleDateString()}</Td>
                           <Td isNumeric>
                             <IconButton
@@ -490,7 +526,7 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
                     })}
                     {items.length === 0 && (
                       <Tr>
-                        <Td colSpan={6} textAlign="center" color="gray.500" py={6}>
+                        <Td colSpan={7} textAlign="center" color="gray.500" py={6}>
                           이 그룹에 등록된 항목이 없습니다.
                         </Td>
                       </Tr>

@@ -32,6 +32,10 @@ Thumbs.db
 # Original project (not needed for deployment)
 vscode_project/
 
+# Reference apps (extracted for analysis, not for deployment)
+blog-site-top-exposure/
+_extracted_blog_app/
+
 # Platform tools (ADB binary, too large for git)
 platform-tools/
 

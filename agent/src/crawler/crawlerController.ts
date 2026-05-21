@@ -4,6 +4,8 @@ import { crawlerUtil, type LogFn } from './utils/crawlerUtil';
 import { crawlerService } from './services/crawlerService';
 import { imitateService } from './services/imitateService';
 import { knowledgeService } from './services/knowledgeService';
+import { blogService } from './services/blogService';
+import { blogRankService } from './services/blogRankService';
 import { NAVER_URL } from './constants/urls';
 import type { Knowledge, NaverAccount, Settings } from '@shared/types';
 
@@ -35,6 +37,7 @@ class CrawlerController {
   private shoppingResultPage?: Page;
   private shoppingDetailPage?: Page;
   private purchaseDetailPage?: Page;
+  private postPage?: Page;
 
   private onFailedKeyword?: (info: FailedKeywordInfo) => void;
 
@@ -73,7 +76,8 @@ class CrawlerController {
         (effectiveSetting as any).pageType = sample(['pc', 'mobile']);
       }
 
-      logFn(`\n[${i + 1}/${totalCount}번째 상위로직 실행] ${item.keyword}, ${item.itemName}, ${item.purchaseName || ''}\n`);
+      const modeLabel = (item.mode ?? 'shopping') === 'blog' ? '블로그' : '쇼핑';
+      logFn(`\n[${i + 1}/${totalCount}번째 ${modeLabel} 상위로직 실행] ${item.keyword}, ${item.itemName}, ${item.purchaseName || ''}\n`);
 
       try {
         await this._startTopExposureLogic(effectiveSetting, item, naverAccounts, i + 1, shouldStop);
@@ -188,7 +192,18 @@ class CrawlerController {
 
   private async _crawl(knowledge: Knowledge, settings: Partial<Settings>, shouldStop: () => boolean) {
     if (!this.page || !this.browser) return false;
-    const isMobile = settings.pageType === 'mobile';
+
+    const mode = knowledge.mode ?? 'shopping';
+
+    if (mode === 'blog') {
+      return this._crawlBlog(knowledge, settings, shouldStop);
+    }
+
+    return this._crawlShopping(knowledge, settings, shouldStop);
+  }
+
+  private async _crawlShopping(knowledge: Knowledge, settings: Partial<Settings>, shouldStop: () => boolean) {
+    if (!this.page || !this.browser) return false;
 
     let keyword = knowledge.keyword;
     if ((settings as any).keywordShuffleControlRole === 'Y') {
@@ -202,7 +217,6 @@ class CrawlerController {
     const result = await knowledgeService.findPages(this.browser, this.page, settings, settings, keyword, knowledge.itemName, knowledge.purchaseName);
     if (!result) return false;
 
-    // 50페이지까지 못 찾았거나 다음 페이지가 없어 종료된 케이스 → 실패 보고
     if (result.failed) {
       try {
         this.onFailedKeyword?.({
@@ -220,7 +234,7 @@ class CrawlerController {
       return false;
     }
 
-    const { shoppingResultPage, shoppingDetailPage, purchaseDetailPage, totalShoppingDetailPage } = result;
+    const { shoppingResultPage, shoppingDetailPage, purchaseDetailPage } = result;
     this.shoppingResultPage = shoppingResultPage;
     this.shoppingDetailPage = shoppingDetailPage;
     this.purchaseDetailPage = purchaseDetailPage;
@@ -266,6 +280,74 @@ class CrawlerController {
     return false;
   }
 
+  private async _crawlBlog(knowledge: Knowledge, settings: Partial<Settings>, shouldStop: () => boolean) {
+    if (!this.page || !this.browser) return false;
+
+    const siteUrl = knowledge.siteUrl || knowledge.itemName;
+    let keyword = knowledge.keyword;
+    if ((settings as any).keywordShuffleControlRole === 'Y') {
+      keyword = this.shuffleKeyword(keyword);
+    }
+
+    crawlerUtil.log(`"${keyword}"키워드로 검색하여 제목에 "${siteUrl}"가 포함된 사이트를 찾겠습니다.`);
+
+    if (shouldStop()) throw new Error('CANCELLED');
+
+    const result = await blogService.findBlog(this.browser, this.page, settings, keyword, siteUrl);
+
+    if (result.failed) {
+      try {
+        this.onFailedKeyword?.({
+          knowledgeId: knowledge.id,
+          keyword: knowledge.keyword,
+          itemName: knowledge.itemName,
+          purchaseName: knowledge.purchaseName,
+          groupName: knowledge.groupName,
+          pagesScanned: result.failed.pagesScanned,
+          reason: result.failed.reason,
+        });
+      } catch (e) {
+        console.error('[crawler] onFailedKeyword 콜백 오류:', e);
+      }
+      return false;
+    }
+
+    this.postPage = result.postPage ?? undefined;
+    if (!this.postPage) {
+      crawlerUtil.log(`키워드: "${keyword}", 사이트: "${siteUrl}"에 해당하는 포스트를 찾지 못했습니다.`);
+      return false;
+    }
+
+    if (shouldStop()) throw new Error('CANCELLED');
+
+    const minW1 = Number(settings.minWaitTime1) || 10;
+    const maxW1 = Number(settings.maxWaitTime1) || 30;
+    const minW2 = Number(settings.minWaitTime2) || 180;
+    const maxW2 = Number(settings.maxWaitTime2) || 250;
+
+    crawlerUtil.log('\n*** [블로그 랭킹 상승 로직] ***');
+    crawlerUtil.log(`설정값 — 1차 반영: ${minW1}~${maxW1}초, 2차 반영: ${minW2}~${maxW2}초\n`);
+
+    const blogRankParams = {
+      page: this.postPage,
+      setting: settings,
+      isTestMode: settings.testMode === 'Y',
+      minWaitTime1: minW1,
+      maxWaitTime1: maxW1,
+      minWaitTime2: minW2,
+      maxWaitTime2: maxW2,
+      keyword: knowledge.keyword,
+    };
+
+    if (settings.logicType === 'detail') {
+      await blogRankService.정밀로직(blogRankParams);
+    } else {
+      await blogRankService.클린로직(blogRankParams);
+    }
+
+    return true;
+  }
+
   private async _startTopExposureLogic(
     setting: Partial<Settings>, knowledge: Knowledge,
     naverAccounts: NaverAccount[], progressCount: number,
@@ -304,6 +386,17 @@ class CrawlerController {
       if (shouldStop()) return;
     }
 
+    // 블로그 모드: postPage 정리
+    if (this.postPage) {
+      crawlerUtil.log('사이트 페이지를 닫겠습니다.');
+      await this.postPage.bringToFront().catch(() => {});
+      await crawlerUtil.autoScroll(this.postPage, '', 200, 200, 3000).catch(() => {});
+      await crawlerUtil.waitRandom(this.postPage, 5, 10).catch(() => {});
+      await this.postPage.close().catch(() => {});
+      this.postPage = undefined;
+    }
+
+    // 쇼핑 모드: 기존 페이지 정리
     if (this.purchaseDetailPage) {
       crawlerUtil.log('구매상세 페이지를 닫겠습니다.');
       await this.purchaseDetailPage.bringToFront().catch(() => {});
@@ -557,6 +650,7 @@ class CrawlerController {
       console.error(e);
     } finally {
       this.page = undefined;
+      this.postPage = undefined;
       this.shoppingDetailPage = undefined;
       this.shoppingResultPage = undefined;
       this.purchaseDetailPage = undefined;

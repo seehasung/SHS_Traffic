@@ -168,4 +168,18 @@ function migrate(db: Database.Database) {
     }
     db.prepare(`UPDATE schema_version SET version = 8`).run();
   }
+
+  const current9 = (db.prepare(`SELECT version FROM schema_version`).get() as { version: number }).version;
+  if (current9 < 9) {
+    // knowledges.mode: 'shopping' (기본) 또는 'blog'
+    const kCols9 = db.pragma('table_info(knowledges)') as { name: string }[];
+    if (!kCols9.some((c) => c.name === 'mode')) {
+      db.exec(`ALTER TABLE knowledges ADD COLUMN mode TEXT NOT NULL DEFAULT 'shopping';`);
+    }
+    // knowledges.site_url: 블로그 모드에서 매칭할 URL/제목
+    if (!kCols9.some((c) => c.name === 'site_url')) {
+      db.exec(`ALTER TABLE knowledges ADD COLUMN site_url TEXT DEFAULT NULL;`);
+    }
+    db.prepare(`UPDATE schema_version SET version = 9`).run();
+  }
 }
