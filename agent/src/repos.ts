@@ -11,6 +11,7 @@ function rowToWorker(r: any): Worker {
     name: r.name,
     loginId: r.login_id,
     loginPassword: r.login_password,
+    mode: r.mode === 'blog' ? 'blog' : 'shopping',
     assignedGroupNames: JSON.parse(r.assigned_group_names || '[]'),
     createdAt: r.created_at,
   };
@@ -25,24 +26,26 @@ export const workersRepo = {
     const row = db().prepare(`SELECT * FROM workers WHERE login_id = ?`).get(loginId) as any;
     return row ? rowToWorker(row) : undefined;
   },
-  create(input: { name: string; loginId: string; loginPassword: string }): Worker {
+  create(input: { name: string; loginId: string; loginPassword: string; mode?: string }): Worker {
     const id = uid(25);
     const now = Date.now();
+    const mode = input.mode === 'blog' ? 'blog' : 'shopping';
     db().prepare(
-      `INSERT INTO workers(id, name, login_id, login_password, assigned_group_names, created_at) VALUES(?, ?, ?, ?, '[]', ?)`
-    ).run(id, input.name, input.loginId, input.loginPassword, now);
+      `INSERT INTO workers(id, name, login_id, login_password, mode, assigned_group_names, created_at) VALUES(?, ?, ?, ?, ?, '[]', ?)`
+    ).run(id, input.name, input.loginId, input.loginPassword, mode, now);
     return rowToWorker(db().prepare(`SELECT * FROM workers WHERE id = ?`).get(id));
   },
-  update(id: string, input: Partial<{ name: string; loginId: string; loginPassword: string; assignedGroupNames: string[] }>): Worker {
+  update(id: string, input: Partial<{ name: string; loginId: string; loginPassword: string; mode: string; assignedGroupNames: string[] }>): Worker {
     const existing = db().prepare(`SELECT * FROM workers WHERE id = ?`).get(id) as any;
     if (!existing) throw new Error('Worker not found');
     const name = input.name ?? existing.name;
     const loginId = input.loginId ?? existing.login_id;
     const loginPassword = input.loginPassword ?? existing.login_password;
+    const mode = input.mode !== undefined ? (input.mode === 'blog' ? 'blog' : 'shopping') : existing.mode;
     const assignedGroupNames = input.assignedGroupNames !== undefined ? JSON.stringify(input.assignedGroupNames) : existing.assigned_group_names;
     db().prepare(
-      `UPDATE workers SET name=?, login_id=?, login_password=?, assigned_group_names=? WHERE id=?`
-    ).run(name, loginId, loginPassword, assignedGroupNames, id);
+      `UPDATE workers SET name=?, login_id=?, login_password=?, mode=?, assigned_group_names=? WHERE id=?`
+    ).run(name, loginId, loginPassword, mode, assignedGroupNames, id);
     return rowToWorker(db().prepare(`SELECT * FROM workers WHERE id = ?`).get(id));
   },
   remove(id: string) {
@@ -245,7 +248,18 @@ export const naverAccountsRepo = {
 // ──────────────── settings ────────────────
 export const settingsRepo = {
   get(): Settings {
-    const row = db().prepare(`SELECT value FROM settings WHERE key = 'app'`).get() as { value: string } | undefined;
+    return this.getByMode('shopping');
+  },
+  save(next: Settings): Settings {
+    return this.saveByMode('shopping', next);
+  },
+  getByMode(mode: 'shopping' | 'blog'): Settings {
+    const key = `app:${mode}`;
+    // 먼저 모드별 키를 찾고, 없으면 기존 'app' 키 폴백
+    let row = db().prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
+    if (!row) {
+      row = db().prepare(`SELECT value FROM settings WHERE key = 'app'`).get() as { value: string } | undefined;
+    }
     if (!row) return { ...DEFAULT_SETTINGS };
     try {
       return { ...DEFAULT_SETTINGS, ...(JSON.parse(row.value) as Settings) };
@@ -253,9 +267,15 @@ export const settingsRepo = {
       return { ...DEFAULT_SETTINGS };
     }
   },
-  save(next: Settings): Settings {
+  saveByMode(mode: 'shopping' | 'blog', next: Settings): Settings {
+    const key = `app:${mode}`;
     const merged = { ...DEFAULT_SETTINGS, ...next };
-    db().prepare(`UPDATE settings SET value = ? WHERE key = 'app'`).run(JSON.stringify(merged));
+    const exists = db().prepare(`SELECT 1 FROM settings WHERE key = ?`).get(key);
+    if (exists) {
+      db().prepare(`UPDATE settings SET value = ? WHERE key = ?`).run(JSON.stringify(merged), key);
+    } else {
+      db().prepare(`INSERT INTO settings(key, value) VALUES(?, ?)`).run(key, JSON.stringify(merged));
+    }
     return merged;
   },
 };

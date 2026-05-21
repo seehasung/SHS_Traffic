@@ -90,8 +90,8 @@ export const api = {
     remove: (id: string) => call<{ ok: true }>('DELETE', API.naverAccount(id)),
   },
   settings: {
-    get: () => call<{ settings: Settings }>('GET', API.settings).then((r) => r.settings),
-    save: (s: Settings) => call<{ settings: Settings }>('PUT', API.settings, s).then((r) => r.settings),
+    get: (mode?: 'shopping' | 'blog') => call<{ settings: Settings }>('GET', `${API.settings}${mode ? `?mode=${mode}` : ''}`).then((r) => r.settings),
+    save: (s: Settings, mode?: 'shopping' | 'blog') => call<{ settings: Settings }>('PUT', `${API.settings}${mode ? `?mode=${mode}` : ''}`, s).then((r) => r.settings),
   },
   runner: {
     status: () => call<{ snapshot: RunnerSnapshot }>('GET', API.runnerStatus).then((r) => r.snapshot),

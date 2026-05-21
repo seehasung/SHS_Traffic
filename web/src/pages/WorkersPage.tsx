@@ -36,7 +36,8 @@ import {
   SimpleGrid,
 } from '@chakra-ui/react';
 import { FiTrash2, FiPlus, FiPlay, FiSquare, FiEdit2 } from 'react-icons/fi';
-import type { Worker, WorkerStatus, KeywordGroup, Knowledge } from '@shared/types';
+import type { Worker, WorkerStatus, KeywordGroup, Knowledge, KnowledgeMode } from '@shared/types';
+import { Select } from '@chakra-ui/react';
 import { api } from '@/api';
 
 export default function WorkersPage() {
@@ -46,9 +47,9 @@ export default function WorkersPage() {
   const [allKnowledges, setAllKnowledges] = useState<Knowledge[]>([]);
   const { isOpen: isAddOpen, onOpen: onAddOpen, onClose: onAddClose } = useDisclosure();
   const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure();
-  const [addForm, setAddForm] = useState({ name: '', loginId: '', loginPassword: '' });
+  const [addForm, setAddForm] = useState({ name: '', loginId: '', loginPassword: '', mode: 'shopping' as KnowledgeMode });
   const [editWorker, setEditWorker] = useState<Worker | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', loginId: '', loginPassword: '', assignedGroupNames: [] as string[] });
+  const [editForm, setEditForm] = useState({ name: '', loginId: '', loginPassword: '', mode: 'shopping' as KnowledgeMode, assignedGroupNames: [] as string[] });
   const toast = useToast();
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
@@ -103,7 +104,7 @@ export default function WorkersPage() {
     }
     try {
       await api.workers.create(addForm);
-      setAddForm({ name: '', loginId: '', loginPassword: '' });
+      setAddForm({ name: '', loginId: '', loginPassword: '', mode: 'shopping' });
       onAddClose();
       refresh();
       toast({ title: '워커가 추가되었습니다', status: 'success', position: 'top' });
@@ -118,6 +119,7 @@ export default function WorkersPage() {
       name: w.name,
       loginId: w.loginId,
       loginPassword: w.loginPassword,
+      mode: w.mode ?? 'shopping',
       assignedGroupNames: w.assignedGroupNames,
     });
     onEditOpen();
@@ -205,6 +207,7 @@ export default function WorkersPage() {
           <Thead bg="gray.50">
             <Tr>
               <Th>이름</Th>
+              <Th>모드</Th>
               <Th>로그인 ID</Th>
               <Th>상태</Th>
               <Th>IP 주소</Th>
@@ -228,6 +231,11 @@ export default function WorkersPage() {
               return (
                 <Tr key={w.id}>
                   <Td fontWeight="medium">{w.name}</Td>
+                  <Td>
+                    <Badge colorScheme={(w.mode ?? 'shopping') === 'blog' ? 'purple' : 'green'} fontSize="2xs">
+                      {(w.mode ?? 'shopping') === 'blog' ? '사이트' : '상품'}
+                    </Badge>
+                  </Td>
                   <Td fontSize="sm" color="gray.600">{w.loginId}</Td>
                   <Td>
                     <Badge colorScheme={isOnline ? (isRunning ? 'blue' : 'green') : 'gray'}>
@@ -301,7 +309,7 @@ export default function WorkersPage() {
             })}
             {workers.length === 0 && (
               <Tr>
-                <Td colSpan={13} textAlign="center" color="gray.500" py={6}>
+                <Td colSpan={14} textAlign="center" color="gray.500" py={6}>
                   등록된 워커가 없습니다. 워커를 추가해주세요.
                 </Td>
               </Tr>
@@ -321,6 +329,13 @@ export default function WorkersPage() {
               <FormControl isRequired>
                 <FormLabel>워커 이름</FormLabel>
                 <Input placeholder="예: 작업PC-1" value={addForm.name} onChange={(e) => setAddForm({ ...addForm, name: e.target.value })} />
+              </FormControl>
+              <FormControl isRequired>
+                <FormLabel>작업 모드</FormLabel>
+                <Select value={addForm.mode} onChange={(e) => setAddForm({ ...addForm, mode: e.target.value as KnowledgeMode })}>
+                  <option value="shopping">상품 (쇼핑 상위노출)</option>
+                  <option value="blog">사이트 (블로그/사이트 상위노출)</option>
+                </Select>
               </FormControl>
               <FormControl isRequired>
                 <FormLabel>로그인 ID</FormLabel>
@@ -350,6 +365,13 @@ export default function WorkersPage() {
               <FormControl>
                 <FormLabel>워커 이름</FormLabel>
                 <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+              </FormControl>
+              <FormControl>
+                <FormLabel>작업 모드</FormLabel>
+                <Select value={editForm.mode} onChange={(e) => setEditForm({ ...editForm, mode: e.target.value as KnowledgeMode })}>
+                  <option value="shopping">상품 (쇼핑 상위노출)</option>
+                  <option value="blog">사이트 (블로그/사이트 상위노출)</option>
+                </Select>
               </FormControl>
               <FormControl>
                 <FormLabel>로그인 ID</FormLabel>

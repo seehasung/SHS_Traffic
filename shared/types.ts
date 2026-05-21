@@ -105,6 +105,8 @@ export interface Worker {
   name: string;
   loginId: string;
   loginPassword: string;
+  /** 이 워커가 작업할 모드. shopping = 쇼핑 상위노출, blog = 블로그/사이트 상위노출. */
+  mode: KnowledgeMode;
   assignedGroupNames: string[];
   createdAt: number;
 }

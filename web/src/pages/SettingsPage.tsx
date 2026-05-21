@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Box,
   Button,
@@ -13,10 +13,15 @@ import {
   Radio,
   RadioGroup,
   Stack,
+  Tab,
+  TabList,
+  TabPanel,
+  TabPanels,
+  Tabs,
   Text,
   useToast,
 } from '@chakra-ui/react';
-import type { Settings } from '@shared/types';
+import type { Settings, KnowledgeMode } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/types';
 import { api } from '@/api';
 
@@ -42,19 +47,23 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export default function SettingsPage() {
+function SettingsForm({ mode }: { mode: KnowledgeMode }) {
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
 
+  const load = useCallback(() => {
+    api.settings.get(mode).then(setS);
+  }, [mode]);
+
   useEffect(() => {
-    api.settings.get().then(setS);
-  }, []);
+    load();
+  }, [load]);
 
   const save = async () => {
     setBusy(true);
     try {
-      const next = await api.settings.save(s);
+      const next = await api.settings.save(s, mode);
       setS(next);
       toast({ title: '저장되었습니다', status: 'success', position: 'top' });
     } catch (e: any) {
@@ -65,11 +74,9 @@ export default function SettingsPage() {
   };
 
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) => setS({ ...s, [key]: value });
+  const isBlog = mode === 'blog';
 
   return (
-    <Stack spacing={6}>
-      <Heading size="md">작업 설정</Heading>
-
       <Box borderWidth="1px" borderRadius="lg" p={6}>
         <Stack spacing={6}>
 
@@ -222,19 +229,23 @@ export default function SettingsPage() {
 
           <Divider />
 
-          <Section title="상위 영역">
-            <Field label="상위 영역">
-              <RadioGroup value={s.storeType ?? 'normal'} onChange={(v) => set('storeType', v as Settings['storeType'])}>
-                <HStack spacing={5}>
-                  <Radio value="normal">가격비교1</Radio>
-                  <Radio value="special">가격비교2</Radio>
-                  <Radio value="plus">+스토어</Radio>
-                </HStack>
-              </RadioGroup>
-            </Field>
-          </Section>
+          {!isBlog && (
+            <>
+              <Section title="상위 영역">
+                <Field label="상위 영역">
+                  <RadioGroup value={s.storeType ?? 'normal'} onChange={(v) => set('storeType', v as Settings['storeType'])}>
+                    <HStack spacing={5}>
+                      <Radio value="normal">가격비교1</Radio>
+                      <Radio value="special">가격비교2</Radio>
+                      <Radio value="plus">+스토어</Radio>
+                    </HStack>
+                  </RadioGroup>
+                </Field>
+              </Section>
 
-          <Divider />
+              <Divider />
+            </>
+          )}
 
           <Section title="로직 / 체류시간">
             <Field label="로직 유형">
@@ -242,19 +253,21 @@ export default function SettingsPage() {
                 <HStack spacing={5}>
                   <Radio value="detail">정밀로직</Radio>
                   <Radio value="clean">클린로직</Radio>
-                  <Radio value="hidden">히든로직</Radio>
+                  {!isBlog && <Radio value="hidden">히든로직</Radio>}
                 </HStack>
               </RadioGroup>
             </Field>
 
-            <Field label="쇼핑랜덤서핑">
-              <RadioGroup value={s.shoppingRandomSearch ?? 'N'} onChange={(v) => set('shoppingRandomSearch', v as Settings['shoppingRandomSearch'])}>
-                <HStack spacing={5}>
-                  <Radio value="Y">추가함</Radio>
-                  <Radio value="N">추가안함</Radio>
-                </HStack>
-              </RadioGroup>
-            </Field>
+            {!isBlog && (
+              <Field label="쇼핑랜덤서핑">
+                <RadioGroup value={s.shoppingRandomSearch ?? 'N'} onChange={(v) => set('shoppingRandomSearch', v as Settings['shoppingRandomSearch'])}>
+                  <HStack spacing={5}>
+                    <Radio value="Y">추가함</Radio>
+                    <Radio value="N">추가안함</Radio>
+                  </HStack>
+                </RadioGroup>
+              </Field>
+            )}
 
             <HStack spacing={4} align="flex-end">
               <Field label="체류시간 (1차반영) — 최소">
@@ -303,6 +316,27 @@ export default function SettingsPage() {
           </HStack>
         </Stack>
       </Box>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Stack spacing={6}>
+      <Heading size="md">작업 설정</Heading>
+      <Tabs variant="enclosed" colorScheme="blue">
+        <TabList>
+          <Tab>상품 설정 (쇼핑)</Tab>
+          <Tab>사이트 설정 (블로그)</Tab>
+        </TabList>
+        <TabPanels>
+          <TabPanel px={0}>
+            <SettingsForm mode="shopping" />
+          </TabPanel>
+          <TabPanel px={0}>
+            <SettingsForm mode="blog" />
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
     </Stack>
   );
 }

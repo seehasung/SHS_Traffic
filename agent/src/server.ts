@@ -75,19 +75,21 @@ function getWorkerStatusList(): WorkerStatus[] {
  * 호스트에서 키워드/그룹/네이버계정/설정이 변경된 직후 호출.
  */
 function broadcastConfigToAllWorkers() {
-  // 워커에는 활성 키워드만 전달 (isActive === false 인 키워드는 즉시 작업 대상에서 제외)
   const allKnowledges = knowledgesRepo.list().filter((k) => k.isActive !== false);
-  const settings = settingsRepo.get();
   const naverAccounts = naverAccountsRepo.list();
   for (const worker of workersRepo.list()) {
     const ws = workerSockets.get(worker.id);
     if (!ws || ws.readyState !== WebSocket.OPEN) continue;
+    // 워커 모드에 맞는 설정과 키워드 전달
+    const workerMode = worker.mode ?? 'shopping';
+    const workerSettings = settingsRepo.getByMode(workerMode);
+    const modeFiltered = allKnowledges.filter((k) => (k.mode ?? 'shopping') === workerMode);
     const assignedKnowledges = worker.assignedGroupNames.length > 0
-      ? allKnowledges.filter((k) => k.groupName && worker.assignedGroupNames.includes(k.groupName))
+      ? modeFiltered.filter((k) => k.groupName && worker.assignedGroupNames.includes(k.groupName))
       : [];
     const update: ServerToWorkerMessage = {
       type: 'config:update',
-      settings,
+      settings: workerSettings,
       knowledges: assignedKnowledges,
       naverAccounts,
     };
@@ -207,10 +209,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   app.get(API.workers, requireAdmin, (_req, res) => res.json({ items: workersRepo.list() }));
   app.get(API.workerStatuses, requireAdmin, (_req, res) => res.json({ statuses: getWorkerStatusList() }));
   app.post(API.workers, requireAdmin, (req, res) => {
-    const { name, loginId, loginPassword } = req.body;
+    const { name, loginId, loginPassword, mode } = req.body;
     if (!name || !loginId || !loginPassword) return res.status(400).json({ error: 'INVALID_INPUT' });
     try {
-      res.json({ item: workersRepo.create({ name, loginId, loginPassword }) });
+      res.json({ item: workersRepo.create({ name, loginId, loginPassword, mode }) });
     } catch (e: any) {
       res.status(409).json({ error: 'DUPLICATE_LOGIN_ID' });
     }
@@ -218,16 +220,17 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   app.put('/api/workers/:id', requireAdmin, (req, res) => {
     try {
       const updated = workersRepo.update(req.params.id, req.body);
-      // 그룹 배정이 바뀌었을 수 있으니 연결된 워커에게 새 키워드/설정 push
+      // 그룹 배정이나 모드가 바뀌었을 수 있으니 연결된 워커에게 새 키워드/설정 push
       const ws = workerSockets.get(req.params.id);
       if (ws && ws.readyState === WebSocket.OPEN) {
-        const allKnowledges = knowledgesRepo.list().filter((k) => k.isActive !== false);
+        const workerMode = updated.mode ?? 'shopping';
+        const allKnowledges = knowledgesRepo.list().filter((k) => k.isActive !== false && (k.mode ?? 'shopping') === workerMode);
         const assignedKnowledges = updated.assignedGroupNames.length > 0
           ? allKnowledges.filter((k) => k.groupName && updated.assignedGroupNames.includes(k.groupName))
           : [];
         const update: ServerToWorkerMessage = {
           type: 'config:update',
-          settings: settingsRepo.get(),
+          settings: settingsRepo.getByMode(workerMode),
           knowledges: assignedKnowledges,
           naverAccounts: naverAccountsRepo.list(),
         };
@@ -365,9 +368,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   });
 
   // ──────────────── settings ────────────────
+  // mode 쿼리 파라미터로 설정 모드 구분: ?mode=shopping 또는 ?mode=blog
   app.get(API.settings, (req, res) => {
     const session = req.session!;
-    const hostSettings = settingsRepo.get();
+    const mode = (req.query.mode as string) === 'blog' ? 'blog' : 'shopping';
+    const hostSettings = settingsRepo.getByMode(mode);
     if (session.role === 'worker' && session.workerId) {
       const workerOverride = workersRepo.getSettings(session.workerId);
       return res.json({ settings: workerOverride ?? hostSettings, isDefault: !workerOverride });
@@ -376,11 +381,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   });
   app.put(API.settings, (req, res) => {
     const session = req.session!;
+    const mode = (req.query.mode as string) === 'blog' ? 'blog' : 'shopping';
     if (session.role === 'worker' && session.workerId) {
       workersRepo.saveSettings(session.workerId, req.body);
       return res.json({ settings: req.body });
     }
-    res.json({ settings: settingsRepo.save(req.body) });
+    res.json({ settings: settingsRepo.saveByMode(mode, req.body) });
   });
 
   // ──────────────── runner (로컬 실행용, 호환 유지) ────────────────
@@ -534,8 +540,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
             lastHeartbeat: Date.now(),
           });
 
-          // 배정된 그룹의 키워드만 전송 (배정된 그룹이 없으면 빈 목록). isActive=false 는 워커가 작업하지 않도록 제외.
-          const allKnowledges = knowledgesRepo.list().filter((k) => k.isActive !== false);
+          // 워커 모드에 맞는 설정/키워드만 전송
+          const workerMode = worker.mode ?? 'shopping';
+          const allKnowledges = knowledgesRepo.list().filter((k) => k.isActive !== false && (k.mode ?? 'shopping') === workerMode);
           const assignedKnowledges = worker.assignedGroupNames.length > 0
             ? allKnowledges.filter((k) => k.groupName && worker.assignedGroupNames.includes(k.groupName))
             : [];
@@ -543,7 +550,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
           const ok: ServerToWorkerMessage = {
             type: 'auth:ok',
             workerId: worker.id,
-            settings: settingsRepo.get(),
+            settings: settingsRepo.getByMode(workerMode),
             knowledges: assignedKnowledges,
             naverAccounts: naverAccountsRepo.list(),
           };

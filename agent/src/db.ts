@@ -182,4 +182,24 @@ function migrate(db: Database.Database) {
     }
     db.prepare(`UPDATE schema_version SET version = 9`).run();
   }
+
+  const current10 = (db.prepare(`SELECT version FROM schema_version`).get() as { version: number }).version;
+  if (current10 < 10) {
+    // workers.mode: 'shopping' (기본) 또는 'blog'
+    const wCols = db.pragma('table_info(workers)') as { name: string }[];
+    if (!wCols.some((c) => c.name === 'mode')) {
+      db.exec(`ALTER TABLE workers ADD COLUMN mode TEXT NOT NULL DEFAULT 'shopping';`);
+    }
+    // 설정 분리: 기존 'app' 키의 설정을 'app:shopping'과 'app:blog'로 복제
+    const existingRow = db.prepare(`SELECT value FROM settings WHERE key = 'app'`).get() as { value: string } | undefined;
+    if (existingRow) {
+      db.prepare(`INSERT OR IGNORE INTO settings(key, value) VALUES('app:shopping', ?)`).run(existingRow.value);
+      db.prepare(`INSERT OR IGNORE INTO settings(key, value) VALUES('app:blog', ?)`).run(existingRow.value);
+    } else {
+      const def = JSON.stringify(DEFAULT_SETTINGS);
+      db.prepare(`INSERT OR IGNORE INTO settings(key, value) VALUES('app:shopping', ?)`).run(def);
+      db.prepare(`INSERT OR IGNORE INTO settings(key, value) VALUES('app:blog', ?)`).run(def);
+    }
+    db.prepare(`UPDATE schema_version SET version = 10`).run();
+  }
 }
