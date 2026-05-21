@@ -206,17 +206,25 @@ class BlogRankService {
   private async _scrollToKeyword(page: Page | Frame, keyword: string) {
     try {
       await crawlerUtil.waitTillHTMLRendered(page as any);
-      const xPath = `//*[contains(text(), '${keyword.trim()}')]`;
-      await (page as any).waitForXPath(xPath, { timeout: 1000 }).catch(() => {});
-      const items = await (page as any).$x(xPath);
+      const kw = keyword.trim();
 
-      for (let i = 0; i < Math.max(20, items?.length || 0); i++) {
-        const randomIndex = random(Math.floor((items?.length || 0) / 2), items?.length || 0);
+      // page.evaluate로 키워드 포함 요소 수 파악
+      const itemCount: number = await (page as any).evaluate((text: string) => {
+        const xp = `//*[contains(text(), '${text}')]`;
+        const snap = document.evaluate(xp, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+        return snap.snapshotLength;
+      }, kw);
+
+      for (let i = 0; i < Math.max(20, itemCount); i++) {
+        const randomIndex = random(Math.floor(itemCount / 2), itemCount);
         const beforeY = await (page as any).evaluate(() => (window as any).scrollY);
-        const item = items[randomIndex];
-        if (item) {
-          await item.evaluate((elem: any) => elem.scrollIntoView());
-        }
+        // 특정 인덱스의 요소로 스크롤
+        await (page as any).evaluate((text: string, idx: number) => {
+          const xp = `//*[contains(text(), '${text}')]`;
+          const snap = document.evaluate(xp, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+          const el = snap.snapshotItem(idx) as HTMLElement | null;
+          if (el) el.scrollIntoView();
+        }, kw, randomIndex);
         const afterY = await (page as any).evaluate(() => (window as any).scrollY);
         if (Math.abs(beforeY - afterY) >= 10) {
           crawlerUtil.log(

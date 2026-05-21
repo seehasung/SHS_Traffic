@@ -57,40 +57,84 @@ class BlogService {
       await crawlerUtil.autoScroll(page, '', 250, 1200);
       await crawlerUtil.waitTillHTMLRendered(page, 5000);
 
-      const linkXpath = isMobile
-        ? '//*[contains(@class, "sds-comps-text-type-headline1")]//a'
-        : '//span[contains(@class, "sds-comps-text-type-headline1")]/ancestor::a[1]';
-
-      const elemHandles = (await (page as any).$x(linkXpath)) as ElementHandle<Element>[];
-      const results = await Promise.all(
-        elemHandles.map((el) =>
-          el.evaluate((a: any) => ({
-            href: a.href || '',
-            title: (a.innerText || '').trim(),
-          })),
-        ),
-      );
+      // page.evaluate로 XPath + CSS 셀렉터 모두 사용하여 링크 정보 추출 ($x 미지원 대비)
+      const results: { href: string; title: string; index: number }[] = await page.evaluate((mobile: boolean) => {
+        const cssSelector = mobile
+          ? '.sds-comps-text-type-headline1 a, a .sds-comps-text-type-headline1'
+          : 'a:has(span.sds-comps-text-type-headline1), a span.sds-comps-text-type-headline1';
+        let anchors: HTMLAnchorElement[] = [];
+        // CSS 방식 먼저 시도
+        const elems = document.querySelectorAll(cssSelector);
+        elems.forEach((el) => {
+          const a = el.tagName === 'A' ? el as HTMLAnchorElement : el.closest('a') as HTMLAnchorElement;
+          if (a && !anchors.includes(a)) anchors.push(a);
+        });
+        // 실패 시 모든 검색결과 링크를 수집
+        if (anchors.length === 0) {
+          const allLinks = document.querySelectorAll('.lst_total .bx a.total_tit, .api_txt_lines a.api_txt_lines, .total_wrap a, .sp_website a') as NodeListOf<HTMLAnchorElement>;
+          allLinks.forEach((a) => { if (!anchors.includes(a)) anchors.push(a); });
+        }
+        // 그래도 없으면 결과 영역의 모든 a 태그
+        if (anchors.length === 0) {
+          const genericLinks = document.querySelectorAll('#main_pack a[href], .content_root a[href]') as NodeListOf<HTMLAnchorElement>;
+          genericLinks.forEach((a) => {
+            if (a.href && !a.href.includes('naver.com/search') && !anchors.includes(a)) {
+              anchors.push(a);
+            }
+          });
+        }
+        return anchors.map((a, idx) => ({
+          href: a.href || '',
+          title: (a.innerText || '').trim(),
+          index: idx,
+        }));
+      }, isMobile);
 
       crawlerUtil.log(
         `[${pagesScanned}/${MAX_PAGES}페이지] 검색 결과 ${results.length}개 발견, "${siteUrl}" 매칭 검색 중`,
       );
 
+      const target = siteUrl.trim();
       for (let j = 0; j < results.length; j++) {
         const { href, title } = results[j];
-        const found =
-          href?.trim().includes(siteUrl?.trim()) ||
-          title?.trim().includes(siteUrl?.trim());
-        if (found) {
-          crawlerUtil.log(`포스트를 찾았습니다. 주소: "${href.trim()}"`);
+        // URL 매칭 또는 제목 매칭 — 입력값이 URL이면 href에서, 제목이면 title에서 찾음
+        const hrefMatch = href?.trim().includes(target);
+        const titleMatch = title?.trim().includes(target);
+        if (hrefMatch || titleMatch) {
+          crawlerUtil.log(`포스트를 찾았습니다! ${hrefMatch ? `URL: "${href.trim()}"` : `제목: "${title}"`}`);
           if (isMobile) {
             await crawlerUtil.delay(1000);
             await page.$eval('#_sch', (elem: any) => elem.setAttribute('hidden', 'true')).catch(() => {});
             await crawlerUtil.delay(1000);
           }
+          // 해당 링크 요소를 다시 찾아서 클릭
+          const linkElem = await page.evaluateHandle((idx: number, mobile: boolean) => {
+            const cssSelector = mobile
+              ? '.sds-comps-text-type-headline1 a, a .sds-comps-text-type-headline1'
+              : 'a:has(span.sds-comps-text-type-headline1), a span.sds-comps-text-type-headline1';
+            let anchors: HTMLAnchorElement[] = [];
+            const elems = document.querySelectorAll(cssSelector);
+            elems.forEach((el) => {
+              const a = el.tagName === 'A' ? el as HTMLAnchorElement : el.closest('a') as HTMLAnchorElement;
+              if (a && !anchors.includes(a)) anchors.push(a);
+            });
+            if (anchors.length === 0) {
+              const allLinks = document.querySelectorAll('.lst_total .bx a.total_tit, .api_txt_lines a.api_txt_lines, .total_wrap a, .sp_website a') as NodeListOf<HTMLAnchorElement>;
+              allLinks.forEach((a) => { if (!anchors.includes(a)) anchors.push(a); });
+            }
+            if (anchors.length === 0) {
+              const genericLinks = document.querySelectorAll('#main_pack a[href], .content_root a[href]') as NodeListOf<HTMLAnchorElement>;
+              genericLinks.forEach((a) => {
+                if (a.href && !a.href.includes('naver.com/search') && !anchors.includes(a)) anchors.push(a);
+              });
+            }
+            return anchors[idx] ?? null;
+          }, j, isMobile);
+
           const postPage = await crawlerUtil.getNewPageByClick({
             browser,
             page,
-            linkElement: elemHandles[j],
+            linkElement: linkElem as ElementHandle<Element>,
           });
           return { postPage: postPage ?? null };
         }

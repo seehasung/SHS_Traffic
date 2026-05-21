@@ -289,7 +289,7 @@ class CrawlerController {
       keyword = this.shuffleKeyword(keyword);
     }
 
-    crawlerUtil.log(`"${keyword}"키워드로 검색하여 제목에 "${siteUrl}"가 포함된 사이트를 찾겠습니다.`);
+    crawlerUtil.log(`"${keyword}"키워드로 검색하여 URL 또는 제목에 "${siteUrl}"가 포함된 사이트를 찾겠습니다.`);
 
     if (shouldStop()) throw new Error('CANCELLED');
 
