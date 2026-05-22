@@ -664,9 +664,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
             itemName: rm.itemName,
             purchaseName: rm.purchaseName,
             groupName: rm.groupName,
-            rankPosition: rm.rankPosition,
-            pageNumber: rm.pageNumber,
-            found: true,
+            rankPosition: rm.rankPosition ?? 0,
+            pageNumber: rm.pageNumber ?? 0,
+            found: rm.found !== false,
             checkedAt: Date.now(),
           });
           broadcastDashboard({ type: 'rank:update', rank: saved } as any);

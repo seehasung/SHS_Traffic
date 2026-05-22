@@ -26,6 +26,7 @@ export interface RankReportInfo {
   groupName?: string;
   pageNumber: number;
   rankPosition: number;
+  found?: boolean;
 }
 
 export interface CrawlJobParams {
@@ -243,6 +244,19 @@ class CrawlerController {
         });
       } catch (e) {
         console.error('[crawler] onFailedKeyword 콜백 오류:', e);
+      }
+      try {
+        this.onRankFound?.({
+          keyword: knowledge.keyword,
+          itemName: knowledge.itemName,
+          purchaseName: knowledge.purchaseName,
+          groupName: knowledge.groupName,
+          pageNumber: 0,
+          rankPosition: 0,
+          found: false,
+        });
+      } catch (e) {
+        console.error('[crawler] onRankFound(순위밖) 콜백 오류:', e);
       }
       return false;
     }

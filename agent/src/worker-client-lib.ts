@@ -517,7 +517,7 @@ export class WorkerClient extends EventEmitter {
     }
   }
 
-  private sendRankReport(info: { keyword: string; itemName: string; purchaseName?: string; groupName?: string; pageNumber: number; rankPosition: number }) {
+  private sendRankReport(info: { keyword: string; itemName: string; purchaseName?: string; groupName?: string; pageNumber: number; rankPosition: number; found?: boolean }) {
     if (this.ws?.readyState === WebSocket.OPEN && this.isAuthenticated) {
       try {
         const msg: WorkerMessage = {
@@ -528,6 +528,7 @@ export class WorkerClient extends EventEmitter {
           groupName: info.groupName,
           pageNumber: info.pageNumber,
           rankPosition: info.rankPosition,
+          found: info.found !== false,
         } as any;
         this.ws.send(JSON.stringify(msg));
       } catch {

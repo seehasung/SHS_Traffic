@@ -34,7 +34,7 @@ import type { RankCheck, Knowledge } from '@shared/types';
 import { api } from '@/api';
 
 type TrendStatus = 'up' | 'down' | 'maintain' | null;
-type FilterType = 'tracked' | 'up' | 'maintain' | 'down' | null;
+type FilterType = 'tracked' | 'up' | 'maintain' | 'down' | 'outOfRank' | null;
 
 interface KeywordRank {
   keyword: string;
@@ -77,7 +77,7 @@ function RankBadge({ rank }: { rank?: RankCheck }) {
     return <Badge colorScheme="gray" fontSize="xs">미진행</Badge>;
   }
   if (!rank.found) {
-    return <Badge colorScheme="red" fontSize="xs">미발견</Badge>;
+    return <Badge colorScheme="orange" fontSize="xs">순위 밖</Badge>;
   }
   return (
     <Badge colorScheme="green" fontSize="sm" px={2} py={1} borderRadius="md">
@@ -328,11 +328,13 @@ export default function RankCheckPage() {
   const upCount = allKeywordRanks.filter((k) => k.trend === 'up').length;
   const maintainCount = allKeywordRanks.filter((k) => k.trend === 'maintain').length;
   const downCount = allKeywordRanks.filter((k) => k.trend === 'down').length;
+  const outOfRankCount = allKeywordRanks.filter((k) => k.rank && !k.rank.found).length;
 
   // 필터 적용
   const filteredKeywordRanks = allKeywordRanks.filter((k) => {
     if (!filter) return true;
     if (filter === 'tracked') return !!k.rank;
+    if (filter === 'outOfRank') return !!k.rank && !k.rank.found;
     return k.trend === filter;
   });
 
@@ -411,8 +413,8 @@ export default function RankCheckPage() {
         </Stat>
       </SimpleGrid>
 
-      {/* 하단 3개 대시보드 — 전일 대비 변동 */}
-      <SimpleGrid columns={3} spacing={4}>
+      {/* 하단 4개 대시보드 — 전일 대비 변동 */}
+      <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
         <Stat
           {...statCardStyle(filter === 'up', 'red')}
           onClick={() => toggleFilter('up')}
@@ -449,6 +451,17 @@ export default function RankCheckPage() {
           </StatLabel>
           <StatNumber color="blue.500">{downCount}</StatNumber>
         </Stat>
+        <Stat
+          {...statCardStyle(filter === 'outOfRank', 'orange')}
+          onClick={() => toggleFilter('outOfRank')}
+        >
+          <StatLabel>
+            <HStack spacing={1}>
+              <Text>순위 밖</Text>
+            </HStack>
+          </StatLabel>
+          <StatNumber color="orange.500">{outOfRankCount}</StatNumber>
+        </Stat>
       </SimpleGrid>
 
       {filter && (
@@ -456,11 +469,13 @@ export default function RankCheckPage() {
           <Badge colorScheme={
             filter === 'tracked' ? 'green' :
             filter === 'up' ? 'red' :
-            filter === 'down' ? 'blue' : 'gray'
+            filter === 'down' ? 'blue' :
+            filter === 'outOfRank' ? 'orange' : 'gray'
           } fontSize="sm" px={2} py={1}>
             {filter === 'tracked' ? '추적됨' :
              filter === 'up' ? '상승' :
-             filter === 'down' ? '하락' : '유지'} 필터 적용 중
+             filter === 'down' ? '하락' :
+             filter === 'outOfRank' ? '순위 밖' : '유지'} 필터 적용 중
           </Badge>
           <Button size="xs" variant="ghost" onClick={() => setFilter(null)}>해제</Button>
         </Flex>
