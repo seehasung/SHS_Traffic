@@ -225,6 +225,22 @@ export type WorkerMessage =
       reason: string;
     };
 
+/** 순위 조회 결과 */
+export interface RankCheck {
+  id: number;
+  keyword: string;
+  itemName: string;
+  purchaseName?: string;
+  groupName?: string;
+  /** 노출 순위 (data-ap-index-ori + 1). 미발견 시 null. */
+  rankPosition: number | null;
+  /** 발견된 페이지 번호. 미발견 시 null. */
+  pageNumber: number | null;
+  /** 발견 여부 */
+  found: boolean;
+  checkedAt: number;
+}
+
 /** 서버 → 워커 WebSocket 메시지. */
 export type ServerToWorkerMessage =
   | { type: 'auth:ok'; workerId: string; settings: Settings; knowledges: Knowledge[]; naverAccounts: NaverAccount[] }

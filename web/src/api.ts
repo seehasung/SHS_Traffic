@@ -156,6 +156,12 @@ export const api = {
     },
     remove: (id: number) => call<{ ok: true }>('DELETE', `/api/worker-failed-keywords/${id}`),
   },
+  rankChecks: {
+    list: () => call<{ items: import('@shared/types').RankCheck[] }>('GET', API.rankChecks).then((r) => r.items),
+    start: (knowledgeIds?: string[]) => call<{ ok: true }>('POST', API.rankCheckStart, { knowledgeIds }),
+    status: () => call<{ checking: boolean }>('GET', API.rankCheckStatus).then((r) => r.checking),
+    clear: () => call<{ ok: true }>('DELETE', API.rankChecks),
+  },
 };
 
 export { ApiError };

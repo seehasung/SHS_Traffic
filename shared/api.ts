@@ -35,6 +35,10 @@ export const API = {
   runnerStop: '/api/runner/stop',
 
   logs: '/api/logs',
+
+  rankChecks: '/api/rank-checks',
+  rankCheckStart: '/api/rank-checks/start',
+  rankCheckStatus: '/api/rank-checks/status',
 } as const;
 
 export const WS_PATH = '/ws';

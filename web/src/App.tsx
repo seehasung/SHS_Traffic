@@ -12,6 +12,7 @@ import SettingsPage from '@/pages/SettingsPage';
 import WorkersPage from '@/pages/WorkersPage';
 import ProductsPage from '@/pages/ProductsPage';
 import WorkerLogsPage from '@/pages/WorkerLogsPage';
+import RankCheckPage from '@/pages/RankCheckPage';
 import Layout from '@/components/Layout';
 import { api } from '@/api';
 import type { LogEntry } from '@shared/types';
@@ -98,6 +99,7 @@ function Authed({
           {isAdmin && <Route path="/workers" element={<WorkersPage />} />}
           {isAdmin && <Route path="/products" element={<ProductsPage />} />}
           {isAdmin && <Route path="/worker-logs" element={<WorkerLogsPage />} />}
+          {isAdmin && <Route path="/rank-check" element={<RankCheckPage />} />}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

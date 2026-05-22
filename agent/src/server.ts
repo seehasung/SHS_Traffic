@@ -21,7 +21,7 @@ import {
   verifyWorkerLogin,
 } from './auth';
 import type { SessionPayload } from './auth';
-import { keywordGroupsRepo, knowledgesRepo, naverAccountsRepo, settingsRepo, logsRepo, workersRepo, productsRepo, workerLogsRepo, failedKeywordsRepo } from './repos';
+import { keywordGroupsRepo, knowledgesRepo, naverAccountsRepo, settingsRepo, logsRepo, workersRepo, productsRepo, workerLogsRepo, failedKeywordsRepo, rankChecksRepo } from './repos';
 import { runner } from './runner';
 import { staticWebDir } from './paths';
 
@@ -408,6 +408,43 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   app.get(API.logs, (_req, res) => res.json({ items: logsRepo.list() }));
   app.delete(API.logs, (_req, res) => {
     runner.clearLogs();
+    res.json({ ok: true });
+  });
+
+  // ──────────────── rank checks (순위 추적) ────────────────
+  app.get(API.rankChecks, (_req, res) => {
+    res.json({ items: rankChecksRepo.latestPerKeyword() });
+  });
+  app.get(API.rankCheckStatus, (_req, res) => {
+    const { isRankChecking } = require('./rankChecker');
+    res.json({ checking: isRankChecking() });
+  });
+  app.post(API.rankCheckStart, async (req, res) => {
+    const { runRankCheck, isRankChecking } = require('./rankChecker');
+    if (isRankChecking()) {
+      return res.status(409).json({ error: '이미 순위 조회가 진행 중입니다.' });
+    }
+    const knowledgeIds = req.body?.knowledgeIds as string[] | undefined;
+    res.json({ ok: true, message: '순위 조회를 시작합니다.' });
+    // 비동기로 실행
+    runRankCheck(knowledgeIds, (done: number, total: number, current: string) => {
+      broadcastDashboard({
+        type: 'rank:progress',
+        done,
+        total,
+        current,
+      } as any);
+    }).then((results: any[]) => {
+      broadcastDashboard({
+        type: 'rank:complete',
+        results,
+      } as any);
+    }).catch((e: any) => {
+      console.error('[RankCheck] 오류:', e);
+    });
+  });
+  app.delete(API.rankChecks, (_req, res) => {
+    rankChecksRepo.clearAll();
     res.json({ ok: true });
   });
 

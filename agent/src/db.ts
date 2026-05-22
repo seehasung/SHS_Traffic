@@ -202,4 +202,22 @@ function migrate(db: Database.Database) {
     }
     db.prepare(`UPDATE schema_version SET version = 10`).run();
   }
+
+  const current11 = (db.prepare(`SELECT version FROM schema_version`).get() as { version: number }).version;
+  if (current11 < 11) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS rank_checks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        keyword TEXT NOT NULL,
+        item_name TEXT NOT NULL,
+        purchase_name TEXT,
+        group_name TEXT,
+        rank_position INTEGER,
+        page_number INTEGER,
+        found INTEGER NOT NULL DEFAULT 0,
+        checked_at INTEGER NOT NULL
+      );
+    `);
+    db.prepare(`UPDATE schema_version SET version = 11`).run();
+  }
 }

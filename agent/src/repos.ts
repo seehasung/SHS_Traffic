@@ -1,6 +1,6 @@
 // SQLite ↔ 도메인 객체 매핑. 한 곳에 모아두면 라우트가 매우 단순해진다.
 import { db } from './db';
-import type { Knowledge, NaverAccount, Settings, LogEntry, LogLevel, KeywordGroup, Worker, Product, FailedKeyword } from '@shared/types';
+import type { Knowledge, NaverAccount, Settings, LogEntry, LogLevel, KeywordGroup, Worker, Product, FailedKeyword, RankCheck } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/types';
 import { uid } from 'uid';
 
@@ -457,5 +457,58 @@ export const failedKeywordsRepo = {
   },
   remove(id: number) {
     db().prepare(`DELETE FROM failed_keywords WHERE id = ?`).run(id);
+  },
+};
+
+// ──────────────── rank checks ────────────────
+function rowToRankCheck(r: any): RankCheck {
+  return {
+    id: r.id,
+    keyword: r.keyword,
+    itemName: r.item_name,
+    purchaseName: r.purchase_name ?? undefined,
+    groupName: r.group_name ?? undefined,
+    rankPosition: r.rank_position ?? null,
+    pageNumber: r.page_number ?? null,
+    found: !!r.found,
+    checkedAt: r.checked_at,
+  };
+}
+
+export const rankChecksRepo = {
+  list(): RankCheck[] {
+    const rows = db().prepare(`SELECT * FROM rank_checks ORDER BY checked_at DESC`).all();
+    return rows.map(rowToRankCheck);
+  },
+  latestByItemName(itemName: string): RankCheck[] {
+    const rows = db().prepare(
+      `SELECT * FROM rank_checks WHERE item_name = ? ORDER BY checked_at DESC`
+    ).all(itemName);
+    return rows.map(rowToRankCheck);
+  },
+  latestPerKeyword(): RankCheck[] {
+    const rows = db().prepare(`
+      SELECT r.* FROM rank_checks r
+      INNER JOIN (
+        SELECT keyword, item_name, MAX(checked_at) as max_checked
+        FROM rank_checks GROUP BY keyword, item_name
+      ) latest ON r.keyword = latest.keyword AND r.item_name = latest.item_name AND r.checked_at = latest.max_checked
+      ORDER BY r.item_name, r.keyword
+    `).all();
+    return rows.map(rowToRankCheck);
+  },
+  save(input: Omit<RankCheck, 'id'>): RankCheck {
+    const result = db().prepare(
+      `INSERT INTO rank_checks(keyword, item_name, purchase_name, group_name, rank_position, page_number, found, checked_at)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      input.keyword, input.itemName, input.purchaseName ?? null,
+      input.groupName ?? null, input.rankPosition, input.pageNumber,
+      input.found ? 1 : 0, input.checkedAt,
+    );
+    return rowToRankCheck(db().prepare(`SELECT * FROM rank_checks WHERE id = ?`).get(result.lastInsertRowid));
+  },
+  clearAll() {
+    db().prepare(`DELETE FROM rank_checks`).run();
   },
 };

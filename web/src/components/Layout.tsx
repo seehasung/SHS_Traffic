@@ -50,6 +50,7 @@ export default function Layout({ children, email, connected, status, isAdmin, on
                 {tab('/naver-accounts', '네이버 계정')}
                 {tab('/settings', '작업 설정')}
                 {isAdmin && tab('/worker-logs', '실시간 로그')}
+                {isAdmin && tab('/rank-check', '순위 추적')}
               </HStack>
             </Box>
             <Spacer />

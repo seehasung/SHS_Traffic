@@ -59,19 +59,12 @@ class KnowledgeService {
   async isAdvertiseProduct(itemElement: ElementHandle<Element>): Promise<boolean> {
     try {
       const isAd = await itemElement.evaluate((el: any) => {
-        const contentsType = el.getAttribute('data-shp-contents-type');
-        if (contentsType === 'AD' || contentsType === 'ad') return true;
+        // adProduct 가 클래스명에 포함되면 광고 상품 (adProduct_item__XXXXX)
+        const className = el.className || '';
+        if (/adProduct/i.test(className)) return true;
 
-        const adLink = el.querySelector('[data-shp-contents-type="AD"]');
-        if (adLink) return true;
-
-        const text = el.innerText || '';
-        if (text.includes('광고')) return true;
-
-        const adBadge = el.querySelector('[class*="ad_"], [class*="_ad"], [class*="adArea"]');
-        if (adBadge) return true;
-
-        const closestAd = el.closest('[class*="ad_"], [class*="_ad"], [data-shp-area-type="ad"]');
+        // 부모 중 adProduct 클래스가 포함된 요소가 있으면 광고
+        const closestAd = el.closest('[class*="adProduct"]');
         if (closestAd) return true;
 
         return false;
@@ -89,37 +82,59 @@ class KnowledgeService {
     isIncludeAds: boolean,
     isPlus: boolean,
   ) {
+    const targetId = String(targetProductId).trim();
+
     for (let i = 0; i < items?.length; i++) {
       const itemElement = items[i];
 
+      // 광고 상품 (adProduct 클래스) 제외
       const isAd = await this.isAdvertiseProduct(itemElement);
-      if (isAd) {
+      if (isAd && !isIncludeAds) {
         continue;
       }
 
-      const idLinks = await itemElement.$$('[data-shp-contents-id]');
-      let foundLink: ElementHandle<Element> | null = null;
+      // 1순위: data-ap-skuid 속성으로 매칭 (가장 정확)
+      const skuId = await itemElement.evaluate((el: any) => el.getAttribute('data-ap-skuid') || '');
+      if (String(skuId).trim() === targetId) {
+        // data-ap-index-ori 에서 순위 추출
+        const oriIndex = await itemElement.evaluate((el: any) => {
+          const idx = el.getAttribute('data-ap-index-ori');
+          return idx != null ? Number(idx) + 1 : null;
+        });
+        const rankInfo = oriIndex != null ? ` (노출순위: ${oriIndex}위)` : '';
 
-      for (const link of idLinks) {
-        const contentId = await link.evaluate((el: any) => el.getAttribute('data-shp-contents-id') || '');
-        if (String(contentId).trim() === String(targetProductId).trim()) {
-          foundLink = link;
-          break;
+        // 클릭 가능한 링크 찾기
+        let foundLink: ElementHandle<Element> | null = null;
+        const titleLink = await itemElement.$('a[class*="product_link"], a[class*="thumbnail_thumb"]');
+        if (titleLink) {
+          foundLink = titleLink;
+        } else {
+          const idLinks = await itemElement.$$('[data-shp-contents-id]');
+          for (const link of idLinks) {
+            const contentId = await link.evaluate((el: any) => el.getAttribute('data-shp-contents-id') || '');
+            if (String(contentId).trim() === targetId) {
+              foundLink = link;
+              break;
+            }
+          }
+        }
+        if (!foundLink) {
+          const fallbackLink = await itemElement.$('a[href]');
+          if (fallbackLink) foundLink = fallbackLink;
+        }
+
+        if (foundLink) {
+          crawlerUtil.log(`상품번호 "${targetId}" 발견 (${i + 1}번째 아이템)${rankInfo}`);
+          await foundLink.evaluate((x: any) => x.setAttribute('target', '_blank'));
+          return { itemLinkElement: foundLink, itemElement, itemTotalCount: items?.length, itemIndex: i + 1 };
         }
       }
 
-      if (!foundLink) {
-        let itemLinkSelector = !isMobile ? 'a[class*=link__]' : 'a[data-i]';
-        if (isPlus) itemLinkSelector = 'a[data-shp-contents-id]';
-        const itemLinkElement = await itemElement?.$(itemLinkSelector);
-        const dataI = await this.extractProductIdFromElement(itemLinkElement);
-        if (String(dataI) === String(targetProductId).trim()) {
-          foundLink = itemLinkElement;
-        }
-      }
-
-      if (foundLink) {
-        crawlerUtil.log(`[일반 영역] 상품번호 "${targetProductId}" 발견 (${i + 1}번째 아이템)`);
+      // 2순위: data-shp-contents-id 속성으로 매칭 (폴백)
+      const idLinks = await itemElement.$$(`[data-shp-contents-id="${targetId}"]`);
+      if (idLinks.length > 0) {
+        const foundLink = idLinks[0];
+        crawlerUtil.log(`상품번호 "${targetId}" 발견 (${i + 1}번째 아이템, contents-id 매칭)`);
         await foundLink.evaluate((x: any) => x.setAttribute('target', '_blank'));
         return { itemLinkElement: foundLink, itemElement, itemTotalCount: items?.length, itemIndex: i + 1 };
       }
@@ -272,7 +287,7 @@ class KnowledgeService {
 
       const itemsSelector = '*[class*=basicList_list_basis] > div > div';
       const items = await shoppingResultPage.$$(itemsSelector);
-      crawlerUtil.log(`[${i + 1}/${MAX_PAGES}페이지] 검색 결과 아이템 ${items.length}개 발견, 상품번호 "${itemName}"을 일반 영역에서 검색합니다.`);
+      crawlerUtil.log(`[${i + 1}/${MAX_PAGES}페이지] 검색 결과 아이템 ${items.length}개 발견, 상품번호 "${itemName}" 검색 중`);
       const { itemLinkElement, itemElement, itemTotalCount, itemIndex } =
         await this.findTargetInProductList(items, isMobile, itemName, false, isPlus);
 
