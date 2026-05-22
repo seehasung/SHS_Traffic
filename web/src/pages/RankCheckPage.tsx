@@ -33,13 +33,17 @@ import { FiChevronDown, FiChevronRight, FiTrash2, FiTrendingUp, FiTrendingDown, 
 import type { RankCheck, Knowledge } from '@shared/types';
 import { api } from '@/api';
 
+type TrendStatus = 'up' | 'down' | 'maintain' | null;
+type FilterType = 'tracked' | 'up' | 'maintain' | 'down' | null;
+
 interface KeywordRank {
   keyword: string;
   itemName: string;
   purchaseName?: string;
   groupName?: string;
   rank?: RankCheck;
-  previous?: RankCheck;
+  yesterdayRank?: RankCheck;
+  trend: TrendStatus;
 }
 
 interface GroupedProduct {
@@ -47,6 +51,25 @@ interface GroupedProduct {
   purchaseName?: string;
   groupName?: string;
   keywords: KeywordRank[];
+}
+
+function getStartOfDay(date: Date): number {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function computeTrend(todayRank?: RankCheck, yesterdayRank?: RankCheck): TrendStatus {
+  if (!todayRank || !todayRank.found) return null;
+  if (!yesterdayRank || !yesterdayRank.found) return null;
+
+  const prevTotal = ((yesterdayRank.pageNumber ?? 1) - 1) * 40 + (yesterdayRank.rankPosition ?? 0);
+  const currTotal = ((todayRank.pageNumber ?? 1) - 1) * 40 + (todayRank.rankPosition ?? 0);
+  const diff = prevTotal - currTotal;
+
+  if (diff > 0) return 'up';
+  if (diff < 0) return 'down';
+  return 'maintain';
 }
 
 function RankBadge({ rank }: { rank?: RankCheck }) {
@@ -63,7 +86,7 @@ function RankBadge({ rank }: { rank?: RankCheck }) {
   );
 }
 
-function TrendIndicator({ current, previous }: { current?: RankCheck; previous?: RankCheck }) {
+function TrendIndicator({ trend, current, previous }: { trend: TrendStatus; current?: RankCheck; previous?: RankCheck }) {
   if (!current || !current.found) return null;
   if (!previous) return null;
   if (!previous.found && current.found) {
@@ -106,7 +129,6 @@ function ProductRow({ group, onShowHistory }: {
   const { isOpen, onToggle } = useDisclosure();
 
   const trackedKeywords = group.keywords.filter((k) => k.rank?.found);
-  const pendingKeywords = group.keywords.filter((k) => !k.rank);
   const avgRank = trackedKeywords.length > 0
     ? Math.round(trackedKeywords.reduce((s, k) => s + (((k.rank!.pageNumber ?? 1) - 1) * 40 + (k.rank!.rankPosition ?? 0)), 0) / trackedKeywords.length)
     : null;
@@ -134,7 +156,7 @@ function ProductRow({ group, onShowHistory }: {
           {avgRank != null && (
             <Badge colorScheme="blue" fontSize="sm">평균 {avgRank}위</Badge>
           )}
-          <Badge colorScheme={pendingKeywords.length === 0 ? 'green' : 'orange'} fontSize="xs">
+          <Badge colorScheme={trackedKeywords.length === group.keywords.length ? 'green' : 'orange'} fontSize="xs">
             {trackedKeywords.length}/{group.keywords.length} 추적됨
           </Badge>
         </HStack>
@@ -147,7 +169,7 @@ function ProductRow({ group, onShowHistory }: {
               <Tr>
                 <Th>키워드</Th>
                 <Th>현재 순위</Th>
-                <Th>변동</Th>
+                <Th>변동 (전일 대비)</Th>
                 <Th>마지막 조회</Th>
                 <Th>이력</Th>
               </Tr>
@@ -157,7 +179,7 @@ function ProductRow({ group, onShowHistory }: {
                 <Tr key={`${k.itemName}-${k.keyword}`} bg={!k.rank ? 'gray.50' : undefined}>
                   <Td fontWeight="medium">{k.keyword}</Td>
                   <Td><RankBadge rank={k.rank} /></Td>
-                  <Td><TrendIndicator current={k.rank} previous={k.previous} /></Td>
+                  <Td><TrendIndicator trend={k.trend} current={k.rank} previous={k.yesterdayRank} /></Td>
                   <Td fontSize="xs" color="gray.500">
                     {k.rank ? new Date(k.rank.checkedAt).toLocaleString('ko-KR', {
                       month: 'numeric', day: 'numeric',
@@ -193,6 +215,7 @@ export default function RankCheckPage() {
   const [ranks, setRanks] = useState<RankCheck[]>([]);
   const [allHistory, setAllHistory] = useState<Map<string, RankCheck[]>>(new Map());
   const [historyModal, setHistoryModal] = useState<{ itemName: string; keyword: string; items: RankCheck[] } | null>(null);
+  const [filter, setFilter] = useState<FilterType>(null);
   const toast = useToast();
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -258,16 +281,66 @@ export default function RankCheckPage() {
     }
   };
 
+  const toggleFilter = (f: FilterType) => {
+    setFilter((prev) => (prev === f ? null : f));
+  };
+
+  // 오늘/어제 날짜 경계 계산
+  const now = new Date();
+  const todayStart = getStartOfDay(now);
+  const yesterdayStart = todayStart - 86400000;
+
   // 등록된 모든 키워드를 상품별로 그룹핑, 순위 데이터 매핑
   const rankMap = new Map<string, RankCheck>();
   for (const r of ranks) {
     rankMap.set(`${r.itemName}::${r.keyword}`, r);
   }
 
+  // 각 키워드별 트렌드 계산 + KeywordRank 생성
+  const allKeywordRanks: KeywordRank[] = [];
+
+  for (const k of knowledges) {
+    const rankKey = `${k.itemName}::${k.keyword}`;
+    const currentRank = rankMap.get(rankKey);
+    const history = allHistory.get(rankKey) || [];
+
+    // 오늘 데이터: 오늘 날짜의 가장 최근 기록
+    const todayRecord = history.find((h) => h.checkedAt >= todayStart);
+    // 어제 데이터: 어제 날짜 범위의 가장 최근 기록
+    const yesterdayRecord = history.find((h) => h.checkedAt >= yesterdayStart && h.checkedAt < todayStart);
+
+    const trend = computeTrend(todayRecord || currentRank, yesterdayRecord);
+
+    allKeywordRanks.push({
+      keyword: k.keyword,
+      itemName: k.itemName,
+      purchaseName: k.purchaseName,
+      groupName: k.groupName,
+      rank: currentRank,
+      yesterdayRank: yesterdayRecord,
+      trend,
+    });
+  }
+
+  // 통계 계산
+  const totalKeywords = allKeywordRanks.length;
+  const trackedCount = allKeywordRanks.filter((k) => k.rank).length;
+  const upCount = allKeywordRanks.filter((k) => k.trend === 'up').length;
+  const maintainCount = allKeywordRanks.filter((k) => k.trend === 'maintain').length;
+  const downCount = allKeywordRanks.filter((k) => k.trend === 'down').length;
+
+  // 필터 적용
+  const filteredKeywordRanks = allKeywordRanks.filter((k) => {
+    if (!filter) return true;
+    if (filter === 'tracked') return !!k.rank;
+    return k.trend === filter;
+  });
+
+  // 필터 적용된 키워드를 상품별로 그룹핑
   const grouped: GroupedProduct[] = [];
   const itemMap = new Map<string, GroupedProduct>();
 
-  for (const k of knowledges) {
+  for (const k of filteredKeywordRanks) {
     let group = itemMap.get(k.itemName);
     if (!group) {
       group = {
@@ -279,25 +352,19 @@ export default function RankCheckPage() {
       itemMap.set(k.itemName, group);
       grouped.push(group);
     }
-
-    const rankKey = `${k.itemName}::${k.keyword}`;
-    const currentRank = rankMap.get(rankKey);
-    const history = allHistory.get(rankKey) || [];
-    const previous = history.length > 1 ? history[1] : undefined;
-
-    group.keywords.push({
-      keyword: k.keyword,
-      itemName: k.itemName,
-      purchaseName: k.purchaseName,
-      groupName: k.groupName,
-      rank: currentRank,
-      previous,
-    });
+    group.keywords.push(k);
   }
 
-  const totalKeywords = knowledges.length;
-  const trackedCount = knowledges.filter((k) => rankMap.has(`${k.itemName}::${k.keyword}`)).length;
-  const foundCount = ranks.filter((r) => r.found).length;
+  const statCardStyle = (active: boolean, borderColor: string) => ({
+    bg: active ? `${borderColor}.50` : 'white',
+    borderWidth: active ? '2px' : '1px',
+    borderColor: active ? `${borderColor}.400` : 'gray.200',
+    borderRadius: 'lg',
+    p: 4,
+    cursor: 'pointer' as const,
+    transition: 'all 0.2s',
+    _hover: { borderColor: `${borderColor}.300`, shadow: 'sm' },
+  });
 
   return (
     <Stack spacing={5}>
@@ -321,6 +388,7 @@ export default function RankCheckPage() {
         </Text>
       </Box>
 
+      {/* 상단 4개 대시보드 */}
       <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
         <Stat bg="white" borderWidth="1px" borderRadius="lg" p={4}>
           <StatLabel>추적 상품</StatLabel>
@@ -330,7 +398,10 @@ export default function RankCheckPage() {
           <StatLabel>전체 키워드</StatLabel>
           <StatNumber>{totalKeywords}</StatNumber>
         </Stat>
-        <Stat bg="white" borderWidth="1px" borderRadius="lg" p={4}>
+        <Stat
+          {...statCardStyle(filter === 'tracked', 'green')}
+          onClick={() => toggleFilter('tracked')}
+        >
           <StatLabel>추적됨</StatLabel>
           <StatNumber color="green.500">{trackedCount}</StatNumber>
         </Stat>
@@ -339,6 +410,61 @@ export default function RankCheckPage() {
           <StatNumber color="gray.500">{totalKeywords - trackedCount}</StatNumber>
         </Stat>
       </SimpleGrid>
+
+      {/* 하단 3개 대시보드 — 전일 대비 변동 */}
+      <SimpleGrid columns={3} spacing={4}>
+        <Stat
+          {...statCardStyle(filter === 'up', 'red')}
+          onClick={() => toggleFilter('up')}
+        >
+          <StatLabel>
+            <HStack spacing={1}>
+              <Icon as={FiTrendingUp} color="red.500" />
+              <Text>상승</Text>
+            </HStack>
+          </StatLabel>
+          <StatNumber color="red.500">{upCount}</StatNumber>
+        </Stat>
+        <Stat
+          {...statCardStyle(filter === 'maintain', 'gray')}
+          onClick={() => toggleFilter('maintain')}
+        >
+          <StatLabel>
+            <HStack spacing={1}>
+              <Icon as={FiMinus} color="gray.500" />
+              <Text>유지</Text>
+            </HStack>
+          </StatLabel>
+          <StatNumber color="gray.500">{maintainCount}</StatNumber>
+        </Stat>
+        <Stat
+          {...statCardStyle(filter === 'down', 'blue')}
+          onClick={() => toggleFilter('down')}
+        >
+          <StatLabel>
+            <HStack spacing={1}>
+              <Icon as={FiTrendingDown} color="blue.500" />
+              <Text>하락</Text>
+            </HStack>
+          </StatLabel>
+          <StatNumber color="blue.500">{downCount}</StatNumber>
+        </Stat>
+      </SimpleGrid>
+
+      {filter && (
+        <Flex align="center" gap={2}>
+          <Badge colorScheme={
+            filter === 'tracked' ? 'green' :
+            filter === 'up' ? 'red' :
+            filter === 'down' ? 'blue' : 'gray'
+          } fontSize="sm" px={2} py={1}>
+            {filter === 'tracked' ? '추적됨' :
+             filter === 'up' ? '상승' :
+             filter === 'down' ? '하락' : '유지'} 필터 적용 중
+          </Badge>
+          <Button size="xs" variant="ghost" onClick={() => setFilter(null)}>해제</Button>
+        </Flex>
+      )}
 
       {grouped.length > 0 ? (
         grouped.map((g) => (
@@ -351,7 +477,7 @@ export default function RankCheckPage() {
       ) : (
         <Box borderWidth="1px" borderRadius="lg" p={8} textAlign="center">
           <Text color="gray.500">
-            등록된 키워드가 없습니다. 키워드/상품 관리에서 키워드를 추가해주세요.
+            {filter ? '해당 필터에 맞는 키워드가 없습니다.' : '등록된 키워드가 없습니다. 키워드/상품 관리에서 키워드를 추가해주세요.'}
           </Text>
         </Box>
       )}
@@ -378,6 +504,7 @@ export default function RankCheckPage() {
                 <Tbody>
                   {historyModal.items.map((h, idx) => {
                     const prev = historyModal.items[idx + 1];
+                    const t = computeTrend(h, prev);
                     return (
                       <Tr key={h.id}>
                         <Td fontSize="sm">
@@ -387,7 +514,7 @@ export default function RankCheckPage() {
                           })}
                         </Td>
                         <Td><RankBadge rank={h} /></Td>
-                        <Td><TrendIndicator current={h} previous={prev} /></Td>
+                        <Td><TrendIndicator trend={t} current={h} previous={prev} /></Td>
                       </Tr>
                     );
                   })}
