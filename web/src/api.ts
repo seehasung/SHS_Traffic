@@ -158,8 +158,8 @@ export const api = {
   },
   rankChecks: {
     list: () => call<{ items: import('@shared/types').RankCheck[] }>('GET', API.rankChecks).then((r) => r.items),
-    start: (knowledgeIds?: string[]) => call<{ ok: true }>('POST', API.rankCheckStart, { knowledgeIds }),
-    status: () => call<{ checking: boolean }>('GET', API.rankCheckStatus).then((r) => r.checking),
+    history: (itemName: string, keyword: string) =>
+      call<{ items: import('@shared/types').RankCheck[] }>('GET', `/api/rank-checks/history?itemName=${encodeURIComponent(itemName)}&keyword=${encodeURIComponent(keyword)}`).then((r) => r.items),
     clear: () => call<{ ok: true }>('DELETE', API.rankChecks),
   },
 };

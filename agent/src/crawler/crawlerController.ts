@@ -19,6 +19,15 @@ export interface FailedKeywordInfo {
   reason: string;
 }
 
+export interface RankReportInfo {
+  keyword: string;
+  itemName: string;
+  purchaseName?: string;
+  groupName?: string;
+  pageNumber: number;
+  rankPosition: number;
+}
+
 export interface CrawlJobParams {
   settings: Settings;
   knowledges: Knowledge[];
@@ -27,6 +36,8 @@ export interface CrawlJobParams {
   shouldStop: () => boolean;
   /** 50페이지까지 못 찾고 다음 상품으로 넘어간 키워드를 외부에 알리는 콜백. */
   onFailedKeyword?: (info: FailedKeywordInfo) => void;
+  /** 상품 발견 시 순위 정보를 서버에 보고하는 콜백. */
+  onRankFound?: (info: RankReportInfo) => void;
 }
 
 class CrawlerController {
@@ -40,11 +51,13 @@ class CrawlerController {
   private postPage?: Page;
 
   private onFailedKeyword?: (info: FailedKeywordInfo) => void;
+  private onRankFound?: (info: RankReportInfo) => void;
 
   async run(params: CrawlJobParams): Promise<void> {
     const { settings, knowledges, naverAccounts, logFn, shouldStop } = params;
     crawlerUtil.setLogger(logFn);
     this.onFailedKeyword = params.onFailedKeyword;
+    this.onRankFound = params.onRankFound;
 
     if (!knowledges.length) {
       logFn('작업할 키워드가 없습니다. 키워드를 추가해주세요.');
@@ -232,6 +245,22 @@ class CrawlerController {
         console.error('[crawler] onFailedKeyword 콜백 오류:', e);
       }
       return false;
+    }
+
+    // 순위 정보 보고
+    if (result.rankInfo) {
+      try {
+        this.onRankFound?.({
+          keyword: knowledge.keyword,
+          itemName: knowledge.itemName,
+          purchaseName: knowledge.purchaseName,
+          groupName: knowledge.groupName,
+          pageNumber: result.rankInfo.pageNumber,
+          rankPosition: result.rankInfo.rankPosition,
+        });
+      } catch (e) {
+        console.error('[crawler] onRankFound 콜백 오류:', e);
+      }
     }
 
     const { shoppingResultPage, shoppingDetailPage, purchaseDetailPage } = result;

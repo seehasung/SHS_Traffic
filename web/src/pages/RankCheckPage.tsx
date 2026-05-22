@@ -15,33 +15,172 @@ import {
   Thead,
   Tr,
   useToast,
-  Progress,
-  Spinner,
-  Accordion,
-  AccordionItem,
-  AccordionButton,
-  AccordionPanel,
-  AccordionIcon,
   SimpleGrid,
   Stat,
   StatLabel,
   StatNumber,
+  Collapse,
+  useDisclosure,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalCloseButton,
+  Icon,
 } from '@chakra-ui/react';
-import { FiRefreshCw, FiTrash2 } from 'react-icons/fi';
+import { FiChevronDown, FiChevronRight, FiTrash2, FiTrendingUp, FiTrendingDown, FiMinus, FiClock } from 'react-icons/fi';
 import type { RankCheck } from '@shared/types';
 import { api } from '@/api';
 
-interface GroupedRank {
+interface GroupedProduct {
   itemName: string;
   purchaseName?: string;
   groupName?: string;
   keywords: RankCheck[];
 }
 
+function RankBadge({ rank }: { rank: RankCheck }) {
+  if (!rank.found) {
+    return <Badge colorScheme="red" fontSize="xs">미발견</Badge>;
+  }
+  return (
+    <Badge colorScheme="green" fontSize="sm" px={2} py={1} borderRadius="md">
+      {rank.pageNumber}페이지 {rank.rankPosition}번
+    </Badge>
+  );
+}
+
+function TrendIndicator({ current, previous }: { current: RankCheck; previous?: RankCheck }) {
+  if (!previous || !current.found) return null;
+  if (!previous.found && current.found) {
+    return <Text as="span" color="red.500" fontWeight="bold" fontSize="sm">NEW</Text>;
+  }
+  if (!previous.found || !current.found) return null;
+
+  const prevTotal = ((previous.pageNumber ?? 1) - 1) * 40 + (previous.rankPosition ?? 0);
+  const currTotal = ((current.pageNumber ?? 1) - 1) * 40 + (current.rankPosition ?? 0);
+  const diff = prevTotal - currTotal;
+
+  if (diff > 0) {
+    return (
+      <HStack spacing={0}>
+        <Icon as={FiTrendingUp} color="red.500" boxSize={4} />
+        <Text color="red.500" fontWeight="bold" fontSize="sm">▲ {diff}</Text>
+      </HStack>
+    );
+  }
+  if (diff < 0) {
+    return (
+      <HStack spacing={0}>
+        <Icon as={FiTrendingDown} color="blue.500" boxSize={4} />
+        <Text color="blue.500" fontWeight="bold" fontSize="sm">▼ {Math.abs(diff)}</Text>
+      </HStack>
+    );
+  }
+  return (
+    <HStack spacing={0}>
+      <Icon as={FiMinus} color="gray.400" boxSize={4} />
+      <Text color="gray.400" fontSize="sm">유지</Text>
+    </HStack>
+  );
+}
+
+function ProductRow({ group, allHistory, onShowHistory }: {
+  group: GroupedProduct;
+  allHistory: Map<string, RankCheck[]>;
+  onShowHistory: (itemName: string, keyword: string) => void;
+}) {
+  const { isOpen, onToggle } = useDisclosure();
+
+  const foundCount = group.keywords.filter((k) => k.found).length;
+  const avgRank = foundCount > 0
+    ? Math.round(group.keywords.filter((k) => k.found && k.rankPosition).reduce((s, k) => s + (((k.pageNumber ?? 1) - 1) * 40 + (k.rankPosition ?? 0)), 0) / foundCount)
+    : null;
+
+  return (
+    <Box borderWidth="1px" borderRadius="lg" mb={3} bg="white">
+      <Flex
+        px={4} py={3}
+        cursor="pointer"
+        onClick={onToggle}
+        align="center"
+        _hover={{ bg: 'gray.50' }}
+        borderBottomWidth={isOpen ? '1px' : 0}
+      >
+        <Icon as={isOpen ? FiChevronDown : FiChevronRight} mr={2} />
+        <Box flex="1">
+          <HStack spacing={3}>
+            <Text fontWeight="bold" fontSize="md">{group.purchaseName || group.itemName}</Text>
+            <Badge colorScheme="gray" fontSize="2xs">상품번호: {group.itemName}</Badge>
+            {group.groupName && <Badge colorScheme="purple" fontSize="2xs">{group.groupName}</Badge>}
+          </HStack>
+        </Box>
+        <HStack spacing={4}>
+          <Text fontSize="sm" color="gray.500">{group.keywords.length}개 키워드</Text>
+          {avgRank != null && (
+            <Badge colorScheme="blue" fontSize="sm">평균 {avgRank}위</Badge>
+          )}
+          <Badge colorScheme={foundCount === group.keywords.length ? 'green' : 'orange'} fontSize="xs">
+            {foundCount}/{group.keywords.length} 발견
+          </Badge>
+        </HStack>
+      </Flex>
+
+      <Collapse in={isOpen}>
+        <Box px={2} pb={3}>
+          <Table size="sm">
+            <Thead bg="gray.50">
+              <Tr>
+                <Th>키워드</Th>
+                <Th>현재 순위</Th>
+                <Th>변동</Th>
+                <Th>마지막 조회</Th>
+                <Th>이력</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {group.keywords.map((k) => {
+                const histKey = `${k.itemName}::${k.keyword}`;
+                const history = allHistory.get(histKey) || [];
+                const previous = history.length > 1 ? history[1] : undefined;
+
+                return (
+                  <Tr key={`${k.itemName}-${k.keyword}`}>
+                    <Td fontWeight="medium">{k.keyword}</Td>
+                    <Td><RankBadge rank={k} /></Td>
+                    <Td><TrendIndicator current={k} previous={previous} /></Td>
+                    <Td fontSize="xs" color="gray.500">
+                      {new Date(k.checkedAt).toLocaleString('ko-KR', {
+                        month: 'numeric', day: 'numeric',
+                        hour: '2-digit', minute: '2-digit',
+                      })}
+                    </Td>
+                    <Td>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        leftIcon={<FiClock />}
+                        onClick={() => onShowHistory(k.itemName, k.keyword)}
+                      >
+                        이력
+                      </Button>
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </Tbody>
+          </Table>
+        </Box>
+      </Collapse>
+    </Box>
+  );
+}
+
 export default function RankCheckPage() {
   const [ranks, setRanks] = useState<RankCheck[]>([]);
-  const [checking, setChecking] = useState(false);
-  const [progress, setProgress] = useState({ done: 0, total: 0, current: '' });
+  const [allHistory, setAllHistory] = useState<Map<string, RankCheck[]>>(new Map());
+  const [historyModal, setHistoryModal] = useState<{ itemName: string; keyword: string; items: RankCheck[] } | null>(null);
   const toast = useToast();
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -49,8 +188,21 @@ export default function RankCheckPage() {
     try {
       const items = await api.rankChecks.list();
       setRanks(items);
-      const isRunning = await api.rankChecks.status();
-      setChecking(isRunning);
+
+      // 각 키워드별 이력(최근 2건만 트렌드용)
+      const histMap = new Map<string, RankCheck[]>();
+      for (const item of items) {
+        const key = `${item.itemName}::${item.keyword}`;
+        try {
+          const hist = await fetch(`/api/rank-checks/history?itemName=${encodeURIComponent(item.itemName)}&keyword=${encodeURIComponent(item.keyword)}`, { credentials: 'include' })
+            .then((r) => r.json())
+            .then((r) => r.items as RankCheck[]);
+          histMap.set(key, hist);
+        } catch {
+          histMap.set(key, [item]);
+        }
+      }
+      setAllHistory(histMap);
     } catch {
       // ignore
     }
@@ -60,55 +212,42 @@ export default function RankCheckPage() {
     load();
   }, [load]);
 
-  // WebSocket으로 진행 상황 수신
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
     wsRef.current = ws;
-
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data);
-        if (msg.type === 'rank:progress') {
-          setProgress({ done: msg.done, total: msg.total, current: msg.current });
-          setChecking(true);
-        }
-        if (msg.type === 'rank:complete') {
-          setChecking(false);
-          setProgress({ done: 0, total: 0, current: '' });
+        if (msg.type === 'rank:update') {
           load();
-          toast({ title: '순위 조회 완료', status: 'success', position: 'top' });
         }
-      } catch {
-        // ignore
-      }
+      } catch { /* ignore */ }
     };
-
-    return () => {
-      ws.close();
-    };
-  }, [load, toast]);
-
-  const startCheck = async () => {
-    try {
-      setChecking(true);
-      setProgress({ done: 0, total: 0, current: '시작 중...' });
-      await api.rankChecks.start();
-    } catch (e: any) {
-      toast({ title: e?.message ?? '순위 조회 시작 실패', status: 'error', position: 'top' });
-      setChecking(false);
-    }
-  };
+    return () => { ws.close(); };
+  }, [load]);
 
   const clearAll = async () => {
     if (!confirm('모든 순위 기록을 삭제하시겠습니까?')) return;
     await api.rankChecks.clear();
     setRanks([]);
+    setAllHistory(new Map());
   };
 
-  // 상품별로 그룹핑
-  const grouped: GroupedRank[] = [];
-  const itemMap = new Map<string, GroupedRank>();
+  const showHistory = async (itemName: string, keyword: string) => {
+    try {
+      const hist = await fetch(`/api/rank-checks/history?itemName=${encodeURIComponent(itemName)}&keyword=${encodeURIComponent(keyword)}`, { credentials: 'include' })
+        .then((r) => r.json())
+        .then((r) => r.items as RankCheck[]);
+      setHistoryModal({ itemName, keyword, items: hist });
+    } catch {
+      toast({ title: '이력 조회 실패', status: 'error', position: 'top' });
+    }
+  };
+
+  // 상품별 그룹핑
+  const grouped: GroupedProduct[] = [];
+  const itemMap = new Map<string, GroupedProduct>();
   for (const r of ranks) {
     let group = itemMap.get(r.itemName);
     if (!group) {
@@ -121,57 +260,37 @@ export default function RankCheckPage() {
 
   const totalKeywords = ranks.length;
   const foundCount = ranks.filter((r) => r.found).length;
-  const notFoundCount = totalKeywords - foundCount;
-  const avgRank = foundCount > 0
-    ? Math.round(ranks.filter((r) => r.found && r.rankPosition).reduce((sum, r) => sum + (r.rankPosition ?? 0), 0) / foundCount)
-    : 0;
 
   return (
     <Stack spacing={5}>
       <Flex justify="space-between" align="center">
         <Heading size="md">순위 추적</Heading>
-        <HStack>
-          <Button
-            leftIcon={<FiTrash2 />}
-            size="sm"
-            variant="outline"
-            colorScheme="red"
-            onClick={clearAll}
-            isDisabled={checking || ranks.length === 0}
-          >
-            기록 삭제
-          </Button>
-          <Button
-            leftIcon={checking ? <Spinner size="xs" /> : <FiRefreshCw />}
-            colorScheme="blue"
-            onClick={startCheck}
-            isLoading={checking}
-            loadingText={`조회 중 (${progress.done}/${progress.total})`}
-          >
-            순위 조회 시작
-          </Button>
-        </HStack>
+        <Button
+          leftIcon={<FiTrash2 />}
+          size="sm"
+          variant="outline"
+          colorScheme="red"
+          onClick={clearAll}
+          isDisabled={ranks.length === 0}
+        >
+          기록 삭제
+        </Button>
       </Flex>
 
-      {checking && progress.total > 0 && (
-        <Box bg="blue.50" borderRadius="md" p={4}>
-          <Text fontSize="sm" mb={2}>
-            {progress.current} ({progress.done}/{progress.total})
-          </Text>
-          <Progress
-            value={(progress.done / progress.total) * 100}
-            size="sm"
-            colorScheme="blue"
-            borderRadius="md"
-          />
-        </Box>
-      )}
+      <Box bg="blue.50" borderRadius="md" p={3}>
+        <Text fontSize="sm" color="blue.700">
+          워커 PC가 크롤링할 때 자동으로 상품 순위가 기록됩니다. 워커가 작동 중이면 실시간으로 업데이트됩니다.
+        </Text>
+      </Box>
 
-      {/* 요약 */}
       {ranks.length > 0 && (
         <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
           <Stat bg="white" borderWidth="1px" borderRadius="lg" p={4}>
-            <StatLabel>전체 키워드</StatLabel>
+            <StatLabel>추적 상품</StatLabel>
+            <StatNumber>{grouped.length}</StatNumber>
+          </Stat>
+          <Stat bg="white" borderWidth="1px" borderRadius="lg" p={4}>
+            <StatLabel>추적 키워드</StatLabel>
             <StatNumber>{totalKeywords}</StatNumber>
           </Stat>
           <Stat bg="white" borderWidth="1px" borderRadius="lg" p={4}>
@@ -180,81 +299,71 @@ export default function RankCheckPage() {
           </Stat>
           <Stat bg="white" borderWidth="1px" borderRadius="lg" p={4}>
             <StatLabel>미발견</StatLabel>
-            <StatNumber color="red.500">{notFoundCount}</StatNumber>
-          </Stat>
-          <Stat bg="white" borderWidth="1px" borderRadius="lg" p={4}>
-            <StatLabel>평균 순위</StatLabel>
-            <StatNumber color="blue.500">{avgRank > 0 ? `${avgRank}위` : '-'}</StatNumber>
+            <StatNumber color="red.500">{totalKeywords - foundCount}</StatNumber>
           </Stat>
         </SimpleGrid>
       )}
 
-      {/* 상품별 아코디언 */}
       {grouped.length > 0 ? (
-        <Accordion allowMultiple defaultIndex={grouped.map((_, i) => i)}>
-          {grouped.map((g) => (
-            <AccordionItem key={g.itemName} borderWidth="1px" borderRadius="lg" mb={3}>
-              <AccordionButton py={3}>
-                <Flex flex="1" align="center" gap={3}>
-                  <Text fontWeight="bold">상품번호: {g.itemName}</Text>
-                  {g.purchaseName && (
-                    <Text fontSize="sm" color="gray.500" isTruncated maxW="300px">
-                      {g.purchaseName}
-                    </Text>
-                  )}
-                  {g.groupName && (
-                    <Badge colorScheme="purple" fontSize="2xs">{g.groupName}</Badge>
-                  )}
-                  <Badge colorScheme="blue" fontSize="2xs">
-                    {g.keywords.length}개 키워드
-                  </Badge>
-                </Flex>
-                <AccordionIcon />
-              </AccordionButton>
-              <AccordionPanel pb={4} px={2}>
-                <Box overflowX="auto">
-                  <Table size="sm">
-                    <Thead bg="gray.50">
-                      <Tr>
-                        <Th>키워드</Th>
-                        <Th>순위</Th>
-                        <Th>조회 시각</Th>
-                      </Tr>
-                    </Thead>
-                    <Tbody>
-                      {g.keywords.map((r) => (
-                        <Tr key={r.id}>
-                          <Td fontWeight="medium">{r.keyword}</Td>
-                          <Td>
-                            {r.found ? (
-                              <HStack>
-                                <Badge colorScheme="green" fontSize="sm" px={2} py={1}>
-                                  {r.pageNumber}페이지 {r.rankPosition}번
-                                </Badge>
-                              </HStack>
-                            ) : (
-                              <Badge colorScheme="red" fontSize="sm">미발견 (50p)</Badge>
-                            )}
-                          </Td>
-                          <Td fontSize="xs" color="gray.500">
-                            {new Date(r.checkedAt).toLocaleString('ko-KR')}
-                          </Td>
-                        </Tr>
-                      ))}
-                    </Tbody>
-                  </Table>
-                </Box>
-              </AccordionPanel>
-            </AccordionItem>
-          ))}
-        </Accordion>
+        grouped.map((g) => (
+          <ProductRow
+            key={g.itemName}
+            group={g}
+            allHistory={allHistory}
+            onShowHistory={showHistory}
+          />
+        ))
       ) : (
         <Box borderWidth="1px" borderRadius="lg" p={8} textAlign="center">
           <Text color="gray.500">
-            순위 기록이 없습니다. "순위 조회 시작" 버튼을 눌러 현재 순위를 확인하세요.
+            아직 순위 기록이 없습니다. 워커 PC가 크롤링을 시작하면 자동으로 순위가 기록됩니다.
           </Text>
         </Box>
       )}
+
+      {/* 이력 모달 */}
+      <Modal isOpen={!!historyModal} onClose={() => setHistoryModal(null)} size="lg">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            순위 이력 — "{historyModal?.keyword}"
+            <Text fontSize="sm" color="gray.500" fontWeight="normal">상품번호: {historyModal?.itemName}</Text>
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            {historyModal?.items && historyModal.items.length > 0 ? (
+              <Table size="sm">
+                <Thead>
+                  <Tr>
+                    <Th>날짜/시간</Th>
+                    <Th>순위</Th>
+                    <Th>변동</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {historyModal.items.map((h, idx) => {
+                    const prev = historyModal.items[idx + 1];
+                    return (
+                      <Tr key={h.id}>
+                        <Td fontSize="sm">
+                          {new Date(h.checkedAt).toLocaleString('ko-KR', {
+                            year: 'numeric', month: 'numeric', day: 'numeric',
+                            hour: '2-digit', minute: '2-digit',
+                          })}
+                        </Td>
+                        <Td><RankBadge rank={h} /></Td>
+                        <Td><TrendIndicator current={h} previous={prev} /></Td>
+                      </Tr>
+                    );
+                  })}
+                </Tbody>
+              </Table>
+            ) : (
+              <Text color="gray.500">이력이 없습니다.</Text>
+            )}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </Stack>
   );
 }

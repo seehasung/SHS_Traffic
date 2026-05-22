@@ -394,12 +394,14 @@ export class WorkerClient extends EventEmitter {
             },
             shouldStop: () => this.isStopping,
             onFailedKeyword: (info) => {
-              // 끊겨 있어도 큐잉되므로 항상 보고
               this.sendFailedKeyword(info);
               this.sendLog(
                 `[실패] 키워드 "${info.keyword}" 상품번호 "${info.itemName}" — ${info.reason} (${info.pagesScanned}페이지 검색)`,
                 'warn',
               );
+            },
+            onRankFound: (info) => {
+              this.sendRankReport(info);
             },
           });
         } catch (e: any) {
@@ -512,6 +514,25 @@ export class WorkerClient extends EventEmitter {
     this.pendingFailedKeywords.push(info);
     if (this.pendingFailedKeywords.length > MAX_PENDING_FAILED) {
       this.pendingFailedKeywords.splice(0, this.pendingFailedKeywords.length - MAX_PENDING_FAILED);
+    }
+  }
+
+  private sendRankReport(info: { keyword: string; itemName: string; purchaseName?: string; groupName?: string; pageNumber: number; rankPosition: number }) {
+    if (this.ws?.readyState === WebSocket.OPEN && this.isAuthenticated) {
+      try {
+        const msg: WorkerMessage = {
+          type: 'worker:rank-report' as any,
+          keyword: info.keyword,
+          itemName: info.itemName,
+          purchaseName: info.purchaseName,
+          groupName: info.groupName,
+          pageNumber: info.pageNumber,
+          rankPosition: info.rankPosition,
+        } as any;
+        this.ws.send(JSON.stringify(msg));
+      } catch {
+        // ignore
+      }
     }
   }
 

@@ -411,37 +411,17 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     res.json({ ok: true });
   });
 
-  // ──────────────── rank checks (순위 추적) ────────────────
+  // ──────────────── rank checks (순위 추적 — 워커가 크롤링 중 자동 보고) ────────────────
   app.get(API.rankChecks, (_req, res) => {
     res.json({ items: rankChecksRepo.latestPerKeyword() });
   });
-  app.get(API.rankCheckStatus, (_req, res) => {
-    const { isRankChecking } = require('./rankChecker');
-    res.json({ checking: isRankChecking() });
-  });
-  app.post(API.rankCheckStart, async (req, res) => {
-    const { runRankCheck, isRankChecking } = require('./rankChecker');
-    if (isRankChecking()) {
-      return res.status(409).json({ error: '이미 순위 조회가 진행 중입니다.' });
-    }
-    const knowledgeIds = req.body?.knowledgeIds as string[] | undefined;
-    res.json({ ok: true, message: '순위 조회를 시작합니다.' });
-    // 비동기로 실행
-    runRankCheck(knowledgeIds, (done: number, total: number, current: string) => {
-      broadcastDashboard({
-        type: 'rank:progress',
-        done,
-        total,
-        current,
-      } as any);
-    }).then((results: any[]) => {
-      broadcastDashboard({
-        type: 'rank:complete',
-        results,
-      } as any);
-    }).catch((e: any) => {
-      console.error('[RankCheck] 오류:', e);
-    });
+  // 특정 상품+키워드의 전체 이력
+  app.get('/api/rank-checks/history', (req, res) => {
+    const itemName = req.query.itemName as string;
+    const keyword = req.query.keyword as string;
+    if (!itemName || !keyword) return res.status(400).json({ error: 'INVALID_INPUT' });
+    const items = rankChecksRepo.history(itemName, keyword);
+    res.json({ items });
   });
   app.delete(API.rankChecks, (_req, res) => {
     rankChecksRepo.clearAll();
@@ -675,6 +655,21 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
           if (autoDisabled) {
             console.log(`[server] knowledge ${msg.knowledgeId} 를 50페이지 실패로 자동 비활성화함`);
           }
+        }
+
+        if ((msg as any).type === 'worker:rank-report') {
+          const rm = msg as any;
+          const saved = rankChecksRepo.save({
+            keyword: rm.keyword,
+            itemName: rm.itemName,
+            purchaseName: rm.purchaseName,
+            groupName: rm.groupName,
+            rankPosition: rm.rankPosition,
+            pageNumber: rm.pageNumber,
+            found: true,
+            checkedAt: Date.now(),
+          });
+          broadcastDashboard({ type: 'rank:update', rank: saved } as any);
         }
 
         if (msg.type === 'worker:request-start') {

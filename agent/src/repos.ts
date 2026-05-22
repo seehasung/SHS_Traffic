@@ -508,6 +508,12 @@ export const rankChecksRepo = {
     );
     return rowToRankCheck(db().prepare(`SELECT * FROM rank_checks WHERE id = ?`).get(result.lastInsertRowid));
   },
+  history(itemName: string, keyword: string): RankCheck[] {
+    const rows = db().prepare(
+      `SELECT * FROM rank_checks WHERE item_name = ? AND keyword = ? ORDER BY checked_at DESC LIMIT 100`
+    ).all(itemName, keyword);
+    return rows.map(rowToRankCheck);
+  },
   clearAll() {
     db().prepare(`DELETE FROM rank_checks`).run();
   },

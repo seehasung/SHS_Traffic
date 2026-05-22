@@ -126,7 +126,7 @@ class KnowledgeService {
         if (foundLink) {
           crawlerUtil.log(`상품번호 "${targetId}" 발견 (${i + 1}번째 아이템)${rankInfo}`);
           await foundLink.evaluate((x: any) => x.setAttribute('target', '_blank'));
-          return { itemLinkElement: foundLink, itemElement, itemTotalCount: items?.length, itemIndex: i + 1 };
+          return { itemLinkElement: foundLink, itemElement, itemTotalCount: items?.length, itemIndex: i + 1, rankPosition: oriIndex ?? (i + 1) };
         }
       }
 
@@ -134,9 +134,13 @@ class KnowledgeService {
       const idLinks = await itemElement.$$(`[data-shp-contents-id="${targetId}"]`);
       if (idLinks.length > 0) {
         const foundLink = idLinks[0];
+        const oriIdx = await itemElement.evaluate((el: any) => {
+          const idx = el.getAttribute('data-ap-index-ori');
+          return idx != null ? Number(idx) + 1 : null;
+        });
         crawlerUtil.log(`상품번호 "${targetId}" 발견 (${i + 1}번째 아이템, contents-id 매칭)`);
         await foundLink.evaluate((x: any) => x.setAttribute('target', '_blank'));
-        return { itemLinkElement: foundLink, itemElement, itemTotalCount: items?.length, itemIndex: i + 1 };
+        return { itemLinkElement: foundLink, itemElement, itemTotalCount: items?.length, itemIndex: i + 1, rankPosition: oriIdx ?? (i + 1) };
       }
     }
     return {} as any;
@@ -224,6 +228,7 @@ class KnowledgeService {
     shoppingResultPage?: Page; shoppingDetailPage?: Page;
     purchaseDetailPage?: Page; totalShoppingDetailPage?: Page;
     failed?: { pagesScanned: number; reason: string };
+    rankInfo?: { pageNumber: number; rankPosition: number };
   }> {
     let isPc = setting.pageType === 'pc';
     let isMobile = setting.pageType === 'mobile';
@@ -288,8 +293,8 @@ class KnowledgeService {
       const itemsSelector = '*[class*=basicList_list_basis] > div > div';
       const items = await shoppingResultPage.$$(itemsSelector);
       crawlerUtil.log(`[${i + 1}/${MAX_PAGES}페이지] 검색 결과 아이템 ${items.length}개 발견, 상품번호 "${itemName}" 검색 중`);
-      const { itemLinkElement, itemElement, itemTotalCount, itemIndex } =
-        await this.findTargetInProductList(items, isMobile, itemName, false, isPlus);
+      const findResult = await this.findTargetInProductList(items, isMobile, itemName, false, isPlus);
+      const { itemLinkElement, itemElement, itemTotalCount, itemIndex } = findResult;
 
       const isFoundTarget = !isEmpty(itemElement);
 
@@ -310,13 +315,15 @@ class KnowledgeService {
         continue;
       }
 
+      const rankInfo = isFoundTarget ? { pageNumber: i + 1, rankPosition: findResult.rankPosition ?? itemIndex } : undefined;
+
       if (isFoundTarget && !purchaseName) {
         crawlerUtil.log(`[타겟상품을 찾았습니다.] ${i + 1}번 페이지의 ${itemTotalCount}개의 상품 중 ${itemIndex}번째 상품입니다.`);
         await crawlerUtil.waitRandom(shoppingResultPage, 10, 13);
         purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage, linkElement: itemLinkElement });
         await purchaseDetailPage?.bringToFront();
         await crawlerUtil.waitTillHTMLRendered(purchaseDetailPage!);
-        return { shoppingResultPage, purchaseDetailPage };
+        return { shoppingResultPage, purchaseDetailPage, rankInfo };
       }
 
       if (isFoundTarget && purchaseName) {
@@ -336,7 +343,7 @@ class KnowledgeService {
           if (isPc && shoppingDetailPage) {
             purchaseDetailPage = await this._findPurchaseItemByPc(browser, shoppingDetailPage, purchaseName, setting) || undefined;
           }
-          return { shoppingResultPage, shoppingDetailPage, purchaseDetailPage, totalShoppingDetailPage };
+          return { shoppingResultPage, shoppingDetailPage, purchaseDetailPage, totalShoppingDetailPage, rankInfo };
         } catch (e) {
           console.error(e);
         }
