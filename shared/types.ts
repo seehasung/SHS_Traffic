@@ -73,6 +73,7 @@ export interface Settings {
   isIncludeAds?: YN;
   shoppingRandomSearch?: YN;
   vpnType?: 'hi' | 'cool' | 'momo';
+  maxPages?: number;
   서비스번호?: number;
   상품번호?: number;
 }

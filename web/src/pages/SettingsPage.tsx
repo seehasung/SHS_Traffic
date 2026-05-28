@@ -308,6 +308,20 @@ function SettingsForm({ mode }: { mode: KnowledgeMode }) {
             </HStack>
           </Section>
 
+          {/* ── 최대 검색 페이지 ── */}
+          {mode === 'shopping' && (
+            <Section title="최대 검색 페이지">
+              <Field label="상품 검색 시 최대 페이지 수">
+                <HStack>
+                  <NumberInput size="sm" w="100px" value={s.maxPages ?? 200} min={1} max={500} onChange={(_, v) => set('maxPages', v || 200)}>
+                    <NumberInputField />
+                  </NumberInput>
+                  <Text fontSize="sm" color="gray.500">페이지</Text>
+                </HStack>
+              </Field>
+            </Section>
+          )}
+
           {/* ── 저장 버튼 ── */}
           <HStack justify="flex-end" pt={2}>
             <Button onClick={save} colorScheme="blue" size="lg" px={10} isLoading={busy}>
