@@ -277,7 +277,7 @@ class KnowledgeService {
     let purchaseDetailPage: Page | undefined;
     let totalShoppingDetailPage: Page | undefined;
 
-    const MAX_PAGES = 50;
+    const MAX_PAGES = 200;
     let pagesScanned = 0;
     let failReason: string | null = null;
     for (let i = 0; i < MAX_PAGES; i++) {
