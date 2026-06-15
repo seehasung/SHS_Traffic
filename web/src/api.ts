@@ -129,6 +129,8 @@ export const api = {
   knowledgesActive: {
     set: (id: string, isActive: boolean) =>
       call<{ item: import('@shared/types').Knowledge }>('PATCH', `/api/knowledges/${encodeURIComponent(id)}/active`, { isActive }).then((r) => r.item),
+    setGroup: (groupName: string, isActive: boolean) =>
+      call<{ ok: true; updated: number }>('PATCH', '/api/knowledges/group-active', { groupName, isActive }),
   },
   workerFailedKeywords: {
     list: (workerId?: string, limit = 2000) => {

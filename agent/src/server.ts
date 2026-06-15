@@ -343,6 +343,20 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     broadcastConfigToAllWorkers();
     res.json({ item });
   });
+  app.patch('/api/knowledges/group-active', (req, res) => {
+    const { groupName, isActive } = req.body;
+    if (!groupName) return res.status(400).json({ error: 'INVALID_INPUT' });
+    const all = knowledgesRepo.list().filter((k) => k.groupName === groupName);
+    let updated = 0;
+    for (const k of all) {
+      if ((k.isActive ?? true) !== !!isActive) {
+        knowledgesRepo.setActive(k.id, !!isActive);
+        updated++;
+      }
+    }
+    broadcastConfigToAllWorkers();
+    res.json({ ok: true, updated });
+  });
   app.delete('/api/knowledges/:id', (req, res) => {
     knowledgesRepo.remove(req.params.id);
     broadcastConfigToAllWorkers();

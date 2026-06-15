@@ -465,6 +465,29 @@ export default function KnowledgesPage({ isAdmin = true }: { isAdmin?: boolean }
                 </HStack>
               </Box>
 
+              {items.some((k) => !(k.isActive ?? true)) && (
+                <Flex justify="flex-end" mb={2}>
+                  <Button
+                    size="xs"
+                    colorScheme="green"
+                    variant="outline"
+                    onClick={async () => {
+                      if (!selectedGroupName) return;
+                      try {
+                        const result = await api.knowledgesActive.setGroup(selectedGroupName, true);
+                        setItems((prev) => prev.map((x) => ({ ...x, isActive: true })));
+                        setAllKnowledges((prev) => prev.map((x) => x.groupName === selectedGroupName ? { ...x, isActive: true } : x));
+                        toast({ title: `${result.updated}개 키워드 활성화됨`, status: 'success', duration: 2000, position: 'top' });
+                      } catch (e) {
+                        toast({ title: '일괄 활성화 실패', status: 'error', position: 'top' });
+                      }
+                    }}
+                  >
+                    이 그룹 모두 켜기
+                  </Button>
+                </Flex>
+              )}
+
               <Box borderWidth="1px" borderRadius="md" overflow="hidden">
                 <Table size="sm">
                   <Thead bg="gray.50">
