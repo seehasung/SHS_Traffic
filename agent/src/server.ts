@@ -442,6 +442,33 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     res.json({ ok: true });
   });
 
+  // ──────────────── click stats (클릭 통계) ────────────────
+  app.get('/api/click-stats', (_req, res) => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const tomorrowStart = todayStart + 86400000;
+    const yesterdayStart = todayStart - 86400000;
+    const dayBeforeStart = todayStart - 2 * 86400000;
+    const dayOfWeek = now.getDay();
+    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const weekStart = todayStart - mondayOffset * 86400000;
+
+    const today = rankChecksRepo.clickCountByRange(todayStart, tomorrowStart);
+    const yesterday = rankChecksRepo.clickCountByRange(yesterdayStart, todayStart);
+    const dayBefore = rankChecksRepo.clickCountByRange(dayBeforeStart, yesterdayStart);
+    const thisWeek = rankChecksRepo.clickCountByRange(weekStart, tomorrowStart);
+    const todayPerKeyword = rankChecksRepo.clickTodayPerKeyword(todayStart, tomorrowStart);
+
+    res.json({ today, yesterday, dayBefore, thisWeek, todayPerKeyword });
+  });
+  app.get('/api/click-stats/history', (req, res) => {
+    const itemName = req.query.itemName as string;
+    const keyword = req.query.keyword as string;
+    if (!itemName || !keyword) return res.status(400).json({ error: 'INVALID_INPUT' });
+    const items = rankChecksRepo.clickHistory(itemName, keyword);
+    res.json({ items });
+  });
+
   // ──────────────── worker logs (영구 저장) ────────────────
   app.get('/api/worker-logs', (req, res) => {
     const workerId = (req.query.workerId as string | undefined) || undefined;

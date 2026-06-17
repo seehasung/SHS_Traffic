@@ -514,6 +514,36 @@ export const rankChecksRepo = {
     ).all(itemName, keyword);
     return rows.map(rowToRankCheck);
   },
+  clickCountByRange(startMs: number, endMs: number): number {
+    const row = db().prepare(
+      `SELECT COUNT(*) as cnt FROM rank_checks WHERE found = 1 AND checked_at >= ? AND checked_at < ?`
+    ).get(startMs, endMs) as any;
+    return row?.cnt ?? 0;
+  },
+  clickCountByKeyword(itemName: string, keyword: string, startMs: number, endMs: number): number {
+    const row = db().prepare(
+      `SELECT COUNT(*) as cnt FROM rank_checks WHERE found = 1 AND item_name = ? AND keyword = ? AND checked_at >= ? AND checked_at < ?`
+    ).get(itemName, keyword, startMs, endMs) as any;
+    return row?.cnt ?? 0;
+  },
+  clickHistory(itemName: string, keyword: string): { date: string; count: number }[] {
+    const rows = db().prepare(`
+      SELECT DATE(checked_at / 1000, 'unixepoch', 'localtime') as day, COUNT(*) as cnt
+      FROM rank_checks
+      WHERE found = 1 AND item_name = ? AND keyword = ?
+      GROUP BY day ORDER BY day DESC LIMIT 30
+    `).all(itemName, keyword) as any[];
+    return rows.map((r: any) => ({ date: r.day, count: r.cnt }));
+  },
+  clickTodayPerKeyword(startMs: number, endMs: number): { itemName: string; keyword: string; count: number }[] {
+    const rows = db().prepare(`
+      SELECT item_name, keyword, COUNT(*) as cnt
+      FROM rank_checks
+      WHERE found = 1 AND checked_at >= ? AND checked_at < ?
+      GROUP BY item_name, keyword
+    `).all(startMs, endMs) as any[];
+    return rows.map((r: any) => ({ itemName: r.item_name, keyword: r.keyword, count: r.cnt }));
+  },
   clearAll() {
     db().prepare(`DELETE FROM rank_checks`).run();
   },
