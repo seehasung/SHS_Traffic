@@ -119,6 +119,14 @@ export class WorkerClient extends EventEmitter {
     return this.knowledges;
   }
 
+  getCrankKnowledges(): CRankKnowledge[] {
+    return this.crankKnowledges.filter((k) => k.isActive);
+  }
+
+  getAllKeywordCount(): number {
+    return this.knowledges.length + this.crankKnowledges.filter((k) => k.isActive).length;
+  }
+
   /**
    * 외부(예: IP 변경 직후)에서 공인 IP를 즉시 다시 가져오게 한다.
    */
@@ -307,7 +315,9 @@ export class WorkerClient extends EventEmitter {
 
   private async startCrawler() {
     if (this.isRunning) return;
-    if (!this.settings || this.knowledges.length === 0) {
+    const hasShoppingOrBlog = this.knowledges.length > 0;
+    const hasCrank = this.crankKnowledges.filter((k) => k.isActive).length > 0;
+    if (!this.settings || (!hasShoppingOrBlog && !hasCrank)) {
       this.sendLog('배정된 키워드가 없습니다.', 'warn');
       return;
     }

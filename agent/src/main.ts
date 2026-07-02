@@ -291,13 +291,28 @@ function showLoginWindow() {
       }
     });
 
-    ipcRenderer.on('worker:knowledges', (_, knowledges) => {
-      const list = document.getElementById('keyword-list');
-      var header = '<div class="kw-header"><span>키워드</span><span>상품명</span><span>상품번호</span></div>';
-      list.innerHTML = header + knowledges.map(function(k) {
+    var shoppingList = [];
+    var crankList = [];
+    function renderKeywordList() {
+      var totalCount = shoppingList.length + crankList.length;
+      var list = document.getElementById('keyword-list');
+      var header = '<div class="kw-header"><span>키워드</span><span>상품명/카페명</span><span>상품번호/게시글</span></div>';
+      var shoppingHtml = shoppingList.map(function(k) {
         return '<div class="kw-row"><span class="kw-keyword">' + escapeHtml(k.keyword) + '</span><span class="kw-name">' + escapeHtml(k.purchaseName || '-') + '</span><span class="kw-product">' + escapeHtml(k.itemName || '') + '</span></div>';
       }).join('');
-      document.querySelectorAll('.tab')[1].textContent = '키워드/상품 (' + knowledges.length + ')';
+      var crankHtml = crankList.map(function(k) {
+        return '<div class="kw-row"><span class="kw-keyword">[C랭크] ' + escapeHtml(k.keyword) + '</span><span class="kw-name">' + escapeHtml(k.cafeName || '-') + '</span><span class="kw-product">' + escapeHtml(k.postTitle || '') + '</span></div>';
+      }).join('');
+      list.innerHTML = header + shoppingHtml + crankHtml;
+      document.querySelectorAll('.tab')[1].textContent = '키워드/상품 (' + totalCount + ')';
+    }
+    ipcRenderer.on('worker:knowledges', (_, knowledges) => {
+      shoppingList = knowledges || [];
+      renderKeywordList();
+    });
+    ipcRenderer.on('worker:crank-knowledges', (_, cknowledges) => {
+      crankList = cknowledges || [];
+      renderKeywordList();
     });
 
     ipcRenderer.on('worker:log-entry', (_, entry) => {
@@ -496,6 +511,7 @@ ipcMain.on('worker:connect', async (_event, data: { serverUrl: string; loginId: 
     workerClient.on('connected', () => {
       loginWindow?.webContents.send('worker:status', { type: 'connected' });
       loginWindow?.webContents.send('worker:knowledges', workerClient.getKnowledges());
+      loginWindow?.webContents.send('worker:crank-knowledges', workerClient.getCrankKnowledges());
       notifyStatus('호스트 서버에 연결되었습니다.');
     });
 
@@ -517,6 +533,7 @@ ipcMain.on('worker:connect', async (_event, data: { serverUrl: string; loginId: 
 
     workerClient.on('knowledges', (knowledges: any[]) => {
       loginWindow?.webContents.send('worker:knowledges', knowledges);
+      loginWindow?.webContents.send('worker:crank-knowledges', workerClient!.getCrankKnowledges());
     });
 
     workerClient.start();
