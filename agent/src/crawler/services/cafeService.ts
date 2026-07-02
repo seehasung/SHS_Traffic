@@ -44,21 +44,22 @@ class CafeService {
     await crawlerUtil.waitRandom(page, 2, 4);
     await crawlerUtil.waitTillHTMLRendered(page, 5000);
 
-    // 카페 탭 클릭
+    // 카페 탭 클릭: .lnb_nav_area 내부 a.tab 중 텍스트가 "카페"인 것
     const cafeTabClicked = await page.evaluate(() => {
-      const tabs = document.querySelectorAll('.flick_bx a, .tab_list a, a[role="tab"]');
+      const tabs = document.querySelectorAll('.lnb_nav_area a.tab, .lnb_nav a.tab');
       for (const tab of tabs) {
         const text = (tab as HTMLElement).textContent?.trim() ?? '';
-        if (text === '카페' || text.includes('카페')) {
+        if (text === '카페') {
           (tab as HTMLElement).click();
           return true;
         }
       }
-      const links = document.querySelectorAll('a[href*="where=article"], a[href*="cafe"]');
-      for (const link of links) {
-        const text = (link as HTMLElement).textContent?.trim() ?? '';
-        if (text === '카페' || text.includes('카페')) {
-          (link as HTMLElement).click();
+      // 폴백: role="tab"인 모든 a 태그에서 "카페" 텍스트 찾기
+      const allTabs = document.querySelectorAll('a[role="tab"]');
+      for (const tab of allTabs) {
+        const text = (tab as HTMLElement).textContent?.trim() ?? '';
+        if (text === '카페') {
+          (tab as HTMLElement).click();
           return true;
         }
       }
@@ -74,36 +75,40 @@ class CafeService {
     await crawlerUtil.waitTillHTMLRendered(page, 5000);
 
     // 무한 스크롤하며 카페명 + 제목 매칭
+    // 실제 DOM: section.sp_ncafe ul.lst_view > li.bx
+    //   카페명: .user_info a.name
+    //   제목: .title_area a.title_link
     let foundIndex = -1;
     let attempts = 0;
     const maxScrollAttempts = 30;
 
     while (foundIndex === -1 && attempts < maxScrollAttempts) {
       const result = await page.evaluate((cn: string, pt: string, mr: number) => {
-        const items = document.querySelectorAll('.cafe_info, .sub_txt, .total_sub, .item_info, .api_txt_lines');
         const allResults: { cafeText: string; titleText: string; idx: number }[] = [];
 
-        const resultBlocks = document.querySelectorAll('.lst_total .bx, .api_subject_bx, .cafe_list_wrap .item, [class*="cafetotal"] li, .search_list .item');
-        let idx = 0;
-        resultBlocks.forEach((block) => {
-          idx++;
-          const titleEl = block.querySelector('a.total_tit, a.api_txt_lines, .title_area a, a[class*="title"], .tit_area a');
-          const cafeEl = block.querySelector('.cafe_name, .sub_txt .name, .cafe_info .name, .detail_box .name, [class*="cafe_name"]');
-          const titleText = titleEl?.textContent?.trim() ?? '';
-          const cafeText = cafeEl?.textContent?.trim() ?? '';
-          allResults.push({ cafeText, titleText, idx });
-        });
+        // 카페 탭 검색 결과: section.sp_ncafe .lst_view > li.bx
+        const resultBlocks = document.querySelectorAll('section.sp_ncafe .lst_view > li.bx, section._sp_ncafe .lst_view > li.bx');
 
-        if (allResults.length === 0) {
-          const genericBlocks = document.querySelectorAll('#main_pack .sp_ntotal > li, .content_root li, .lst_view > li');
-          genericBlocks.forEach((block) => {
-            idx++;
-            const titleEl = block.querySelector('a');
-            const cafeEl = block.querySelector('.sub_txt, .info_area .name, span[class*="name"]');
+        if (resultBlocks.length > 0) {
+          resultBlocks.forEach((block, i) => {
+            const titleEl = block.querySelector('.title_area a.title_link');
+            const cafeEl = block.querySelector('.user_info a.name');
             allResults.push({
               cafeText: cafeEl?.textContent?.trim() ?? '',
               titleText: titleEl?.textContent?.trim() ?? '',
-              idx,
+              idx: i + 1,
+            });
+          });
+        } else {
+          // 폴백: 일반적인 카페 검색 결과 구조
+          const fallbackBlocks = document.querySelectorAll('.lst_view > li.bx, .api_subject_bx > ul > li.bx');
+          fallbackBlocks.forEach((block, i) => {
+            const titleEl = block.querySelector('.title_area a, a.title_link, a[class*="title"]');
+            const cafeEl = block.querySelector('.user_info a.name, a.name');
+            allResults.push({
+              cafeText: cafeEl?.textContent?.trim() ?? '',
+              titleText: titleEl?.textContent?.trim() ?? '',
+              idx: i + 1,
             });
           });
         }
@@ -142,18 +147,18 @@ class CafeService {
 
     crawlerUtil.log(`카페 게시글 발견! 순위: ${foundIndex}위`);
 
-    // 해당 게시글 클릭
+    // 해당 게시글 클릭: title_link를 target="_blank"로 열기 때문에 새 탭에서 열림
     const clicked = await page.evaluate((cn: string, pt: string) => {
-      const blocks = document.querySelectorAll('.lst_total .bx, .api_subject_bx, .cafe_list_wrap .item, [class*="cafetotal"] li, .search_list .item, #main_pack .sp_ntotal > li, .content_root li, .lst_view > li');
+      const blocks = document.querySelectorAll('section.sp_ncafe .lst_view > li.bx, section._sp_ncafe .lst_view > li.bx, .lst_view > li.bx');
       for (const block of blocks) {
-        const titleEl = block.querySelector('a.total_tit, a.api_txt_lines, .title_area a, a[class*="title"], .tit_area a, a');
-        const cafeEl = block.querySelector('.cafe_name, .sub_txt .name, .cafe_info .name, .detail_box .name, [class*="cafe_name"], .sub_txt, .info_area .name, span[class*="name"]');
+        const titleEl = block.querySelector('.title_area a.title_link') as HTMLElement | null;
+        const cafeEl = block.querySelector('.user_info a.name');
         const titleText = titleEl?.textContent?.trim() ?? '';
         const cafeText = cafeEl?.textContent?.trim() ?? '';
         const cafeMatch = cafeText.includes(cn) || cn.includes(cafeText);
         const titleMatch = titleText.includes(pt) || pt.includes(titleText);
         if (cafeMatch && titleMatch && titleEl) {
-          (titleEl as HTMLElement).click();
+          titleEl.click();
           return true;
         }
       }
@@ -180,27 +185,76 @@ class CafeService {
   async dwellInCafe(page: Page, settings: any, cafeInternalClicks: number) {
     const minW1 = Number(settings.minWaitTime1) || 10;
     const maxW1 = Number(settings.maxWaitTime1) || 30;
+    const minW2 = Number(settings.minWaitTime2) || 5;
+    const maxW2 = Number(settings.maxWaitTime2) || 15;
 
     crawlerUtil.log('카페 게시글 체류 시작');
 
-    await crawlerUtil.autoScroll(page, '', 200, 300, 5000).catch(() => {});
+    // 페이지 높이 측정
+    const { distance, delay } = crawlerUtil.getScrollValue(settings.scrollSpeed);
+    await crawlerUtil.waitTillHTMLRendered(page, 5000);
+    await crawlerUtil.scrollTo(page, 'top');
+    await crawlerUtil.autoScroll(page, '', delay, distance).catch(() => {});
+    await crawlerUtil.waitTillHTMLRendered(page, 5000);
+    await crawlerUtil.scrollTo(page, 'top');
+    const totalScrollHeight = Math.round(await page.evaluate(() => document.body.scrollHeight));
+
+    // 1차: 천천히 내리면서 읽기 + 랜덤 스크롤 (올렸다 내렸다)
+    await crawlerUtil.scrollRandom(page, totalScrollHeight, 4, 3, 5);
+    crawlerUtil.log(`[1차 체류] ${minW1}~${maxW1}초 랜덤 대기`);
     await crawlerUtil.waitRandom(page, minW1, maxW1);
 
+    // 2차: 다시 랜덤 스크롤 + 대기
+    await crawlerUtil.scrollRandom(page, totalScrollHeight, 4, 3, 5);
+    crawlerUtil.log(`[2차 체류] ${minW2}~${maxW2}초 랜덤 대기`);
+    await crawlerUtil.waitRandom(page, minW2, maxW2);
+
     // 카페 내부 게시판 링크 클릭
+    // 실제 DOM: #cafe-menu ul.cafe-menu-list li a.gm-tcol-c[href*="ArticleList"]
     for (let i = 0; i < cafeInternalClicks; i++) {
       const clicked = await page.evaluate(() => {
-        const links = document.querySelectorAll('a[href*="cafe.naver.com"]');
         const validLinks: HTMLAnchorElement[] = [];
-        links.forEach((a) => {
-          const href = (a as HTMLAnchorElement).href;
-          if (href && !href.includes('javascript:') && href.includes('/ArticleRead') || href.includes('/ArticleList')) {
-            validLinks.push(a as HTMLAnchorElement);
+
+        // 1순위: 카페 사이드 메뉴의 게시판 링크만 (ico-link 외부링크 제외)
+        const menuLinks = document.querySelectorAll('#cafe-menu ul.cafe-menu-list > li');
+        menuLinks.forEach((li) => {
+          const hasLinkIcon = li.querySelector('img.ico-link');
+          if (hasLinkIcon) return;
+          const anchor = li.querySelector('a.gm-tcol-c') as HTMLAnchorElement | null;
+          if (!anchor) return;
+          const onclick = anchor.getAttribute('onclick') || '';
+          if (onclick.includes('mnu.link')) return;
+          const href = anchor.href || anchor.getAttribute('href') || '';
+          if (href.includes('ArticleList') && !href.includes('javascript:')) {
+            const ul = li.closest('ul.cafe-menu-list');
+            const isVisible = ul ? ul.style.display !== 'none' : true;
+            if (isVisible) validLinks.push(anchor);
           }
         });
 
+        // 2순위: 카페 본문 영역의 게시글 링크
         if (validLinks.length === 0) {
-          const allLinks = document.querySelectorAll('#app a[href], .article_wrap a[href], .ArticleContentBox a[href]');
-          allLinks.forEach((a) => {
+          const articleLinks = document.querySelectorAll(
+            '#cafe_main a[href*="ArticleRead"], ' +
+            'iframe#cafe_main, ' +
+            '.article-board a[href], ' +
+            'a[href*="/ArticleRead.nhn"], ' +
+            'a[href*="/ArticleList.nhn"]'
+          );
+          articleLinks.forEach((a) => {
+            if (a.tagName === 'A') {
+              const href = (a as HTMLAnchorElement).href;
+              if (href && !href.includes('javascript:')) {
+                validLinks.push(a as HTMLAnchorElement);
+              }
+            }
+          });
+        }
+
+        // 3순위: 일반적인 카페 내부 링크
+        if (validLinks.length === 0) {
+          const fallbackLinks = document.querySelectorAll('a[href*="cafe.naver.com"]');
+          fallbackLinks.forEach((a) => {
             const href = (a as HTMLAnchorElement).href;
             if (href && !href.includes('javascript:') && href !== window.location.href) {
               validLinks.push(a as HTMLAnchorElement);
@@ -215,9 +269,12 @@ class CafeService {
       });
 
       if (clicked) {
-        crawlerUtil.log(`카페 내부 ${i + 1}/${cafeInternalClicks}번째 링크 클릭`);
+        crawlerUtil.log(`카페 내부 ${i + 1}/${cafeInternalClicks}번째 게시판 클릭`);
         await crawlerUtil.waitRandom(page, 3, 6);
-        await crawlerUtil.autoScroll(page, '', 200, 300, 3000).catch(() => {});
+        await crawlerUtil.waitTillHTMLRendered(page, 5000);
+
+        const innerHeight = Math.round(await page.evaluate(() => document.body.scrollHeight));
+        await crawlerUtil.scrollRandom(page, innerHeight, 3, 2, 4);
         await crawlerUtil.waitRandom(page, random(5, 15), random(15, 25));
       } else {
         crawlerUtil.log(`카페 내부 클릭 가능한 링크가 없어서 스킵합니다.`);
