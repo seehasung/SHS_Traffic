@@ -395,6 +395,14 @@ export class WorkerClient extends EventEmitter {
     let vpnFailed = false;
     try {
       while (!this.isStopping) {
+        // 매 사이클마다 활성 키워드가 남아있는지 재검사
+        const activeShoppingOrBlog = this.knowledges.filter((k) => (k as any).isActive !== false).length;
+        const activeCrank = this.crankKnowledges.filter((k) => k.isActive).length;
+        if (activeShoppingOrBlog === 0 && activeCrank === 0) {
+          this.sendLog('활성 키워드가 없습니다. 작업을 중지합니다.', 'warn');
+          break;
+        }
+
         cycleNo++;
         noteActivity();
         this.sendLog(`\n========== 사이클 #${cycleNo} 시작 ==========\n`, 'info');
