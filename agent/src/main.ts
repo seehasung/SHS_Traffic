@@ -162,6 +162,7 @@ function showLoginWindow() {
 <body>
   <h1>SHS_Traffic</h1>
   <p class="sub">호스트 서버에 연결하여 자동화 작업을 수행합니다</p>
+  <p class="sub" id="version-text" style="font-size:11px;color:#718096;margin-top:-4px"></p>
 
   <div id="login-section">
     <form id="form" onsubmit="return false">
@@ -188,6 +189,7 @@ function showLoginWindow() {
     <div class="status-bar">
       <span id="conn-status" class="badge connected">연결됨</span>
       <span id="runner-badge" class="badge idle">대기 중</span>
+      <span id="version-badge" style="font-size:10px;color:#a0aec0;margin-left:auto"></span>
       <button id="startBtn" class="btn-start" onclick="doStart()">작업 시작</button>
       <button id="stopBtn" class="btn-stop" onclick="doStop()" style="display:none">작업 중지</button>
       <button class="btn-disconnect" onclick="doDisconnect()">연결 해제</button>
@@ -233,6 +235,13 @@ function showLoginWindow() {
         fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2));
       } catch {}
     }
+
+    // 버전 표시
+    ipcRenderer.invoke('get-app-version').then(function(ver) {
+      document.getElementById('version-text').textContent = 'v' + ver;
+      var vb = document.getElementById('version-badge');
+      if (vb) vb.textContent = 'v' + ver;
+    }).catch(function() {});
 
     const cfg = loadConfig();
     if (cfg.serverUrl) document.getElementById('serverUrl').value = cfg.serverUrl;
@@ -492,6 +501,8 @@ function initAutoUpdater() {
 // ─── 워커 클라이언트 로직 (IPC) ───
 
 let workerClient: any = null;
+
+ipcMain.handle('get-app-version', () => app.getVersion());
 
 ipcMain.on('worker:connect', async (_event, data: { serverUrl: string; loginId: string; loginPw: string }) => {
   try {
