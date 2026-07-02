@@ -1,8 +1,8 @@
 {
   "name": "@knowledge-shopping/agent",
-  "version": "0.1.30",
+  "version": "0.1.31",
   "private": true,
-  "description": "SHS_Traffic 워커 에이전트",
+  "description": "SHS_Traffic Worker Agent",
   "author": "SHS",
   "main": "dist/agent/src/main.js",
   "scripts": {

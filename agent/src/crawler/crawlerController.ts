@@ -89,26 +89,25 @@ class CrawlerController {
     this.onCRankReport = params.onCRankReport;
     this.onCRankFailed = params.onCRankFailed;
 
-    if (!knowledges.length) {
+    const crankList = (params.crankKnowledges ?? []).filter((k) => k.isActive);
+    if (!knowledges.length && crankList.length === 0) {
       logFn('작업할 키워드가 없습니다. 키워드를 추가해주세요.');
       return;
     }
 
     this.chromePath = crawlerUtil.getChromePath();
 
-    // 사이클 시작 시 항상 새로 셔플 → 한 사이클 안에서는 셔플된 순서대로 모든 키워드를 한 번씩 실행.
-    // run() 은 한 사이클 단위로 호출되므로 (첫 실행 / 다음 사이클 / 정지 후 재시작 모두)
-    // 매번 자동으로 새 셔플 순서가 사용된다.
-    // 안전망: 혹시 서버에서 비활성화 키워드가 같이 왔거나 로컬에서 isActive=false 로 표시된 키워드가 있으면 제외.
     const activeKnowledges = knowledges.filter((k) => (k as any).isActive !== false);
     const shuffledKnowledges = shuffle(activeKnowledges);
-    // 테스트 모드에서는 일부만 실행 (셔플된 앞쪽 N 개).
     const runList =
       settings.testMode === 'Y'
         ? shuffledKnowledges.slice(0, Math.min(random(1, 3, false), shuffledKnowledges.length))
         : shuffledKnowledges;
     const totalCount = runList.length;
-    logFn(`\n할당된 키워드 ${knowledges.length}개를 랜덤 순서로 섞었습니다. 총 "${totalCount}"번 상위로직을 실행하겠습니다.\n`);
+
+    if (totalCount > 0) {
+      logFn(`\n할당된 키워드 ${knowledges.length}개를 랜덤 순서로 섞었습니다. 총 "${totalCount}"번 상위로직을 실행하겠습니다.\n`);
+    }
 
     for (let i = 0; i < totalCount; i++) {
       if (shouldStop()) return;
@@ -134,7 +133,6 @@ class CrawlerController {
     }
 
     // ── C랭크 카페 크롤링 ──
-    const crankList = (params.crankKnowledges ?? []).filter((k) => k.isActive);
     if (crankList.length > 0) {
       const shuffledCrank = shuffle(crankList);
       const crankSettings = params.crankSettings ?? settings;
