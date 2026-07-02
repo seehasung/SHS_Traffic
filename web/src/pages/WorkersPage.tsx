@@ -232,8 +232,8 @@ export default function WorkersPage() {
                 <Tr key={w.id}>
                   <Td fontWeight="medium">{w.name}</Td>
                   <Td>
-                    <Badge colorScheme={(w.mode ?? 'shopping') === 'blog' ? 'purple' : 'green'} fontSize="2xs">
-                      {(w.mode ?? 'shopping') === 'blog' ? '사이트' : '상품'}
+                    <Badge colorScheme={w.mode === 'blog' ? 'purple' : w.mode === 'crank' ? 'orange' : 'green'} fontSize="2xs">
+                      {w.mode === 'blog' ? '사이트' : w.mode === 'crank' ? 'C랭크' : '상품'}
                     </Badge>
                   </Td>
                   <Td fontSize="sm" color="gray.600">{w.loginId}</Td>
