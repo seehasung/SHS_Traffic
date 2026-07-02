@@ -11,7 +11,7 @@ function rowToWorker(r: any): Worker {
     name: r.name,
     loginId: r.login_id,
     loginPassword: r.login_password,
-    mode: r.mode === 'blog' ? 'blog' : 'shopping',
+    mode: r.mode === 'blog' ? 'blog' : r.mode === 'crank' ? 'crank' : 'shopping',
     assignedGroupNames: JSON.parse(r.assigned_group_names || '[]'),
     createdAt: r.created_at,
   };
@@ -29,7 +29,7 @@ export const workersRepo = {
   create(input: { name: string; loginId: string; loginPassword: string; mode?: string }): Worker {
     const id = uid(25);
     const now = Date.now();
-    const mode = input.mode === 'blog' ? 'blog' : 'shopping';
+    const mode = input.mode === 'blog' ? 'blog' : input.mode === 'crank' ? 'crank' : 'shopping';
     db().prepare(
       `INSERT INTO workers(id, name, login_id, login_password, mode, assigned_group_names, created_at) VALUES(?, ?, ?, ?, ?, '[]', ?)`
     ).run(id, input.name, input.loginId, input.loginPassword, mode, now);
@@ -41,7 +41,7 @@ export const workersRepo = {
     const name = input.name ?? existing.name;
     const loginId = input.loginId ?? existing.login_id;
     const loginPassword = input.loginPassword ?? existing.login_password;
-    const mode = input.mode !== undefined ? (input.mode === 'blog' ? 'blog' : 'shopping') : existing.mode;
+    const mode = input.mode !== undefined ? (input.mode === 'blog' ? 'blog' : input.mode === 'crank' ? 'crank' : 'shopping') : existing.mode;
     const assignedGroupNames = input.assignedGroupNames !== undefined ? JSON.stringify(input.assignedGroupNames) : existing.assigned_group_names;
     db().prepare(
       `UPDATE workers SET name=?, login_id=?, login_password=?, mode=?, assigned_group_names=? WHERE id=?`
