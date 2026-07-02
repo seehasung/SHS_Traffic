@@ -36,7 +36,7 @@ import {
   SimpleGrid,
 } from '@chakra-ui/react';
 import { FiTrash2, FiPlus, FiPlay, FiSquare, FiEdit2 } from 'react-icons/fi';
-import type { Worker, WorkerStatus, KeywordGroup, Knowledge, KnowledgeMode } from '@shared/types';
+import type { Worker, WorkerStatus, KeywordGroup, Knowledge, KnowledgeMode, CRankGroup, CRankKnowledge } from '@shared/types';
 import { Select } from '@chakra-ui/react';
 import { api } from '@/api';
 
@@ -45,6 +45,8 @@ export default function WorkersPage() {
   const [statuses, setStatuses] = useState<WorkerStatus[]>([]);
   const [groups, setGroups] = useState<KeywordGroup[]>([]);
   const [allKnowledges, setAllKnowledges] = useState<Knowledge[]>([]);
+  const [crankGroups, setCrankGroups] = useState<CRankGroup[]>([]);
+  const [crankKnowledges, setCrankKnowledges] = useState<CRankKnowledge[]>([]);
   const { isOpen: isAddOpen, onOpen: onAddOpen, onClose: onAddClose } = useDisclosure();
   const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure();
   const [addForm, setAddForm] = useState({ name: '', loginId: '', loginPassword: '', mode: 'shopping' as KnowledgeMode });
@@ -54,16 +56,20 @@ export default function WorkersPage() {
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
   const refresh = useCallback(async () => {
-    const [w, s, g, k] = await Promise.all([
+    const [w, s, g, k, cg, ck] = await Promise.all([
       api.workers.list(),
       api.workers.statuses(),
       api.keywordGroups.list(),
       api.knowledges.list(),
+      api.crankGroups.list(),
+      api.crankKnowledges.list(),
     ]);
     setWorkers(w);
     setStatuses(s);
     setGroups(g);
     setAllKnowledges(k);
+    setCrankGroups(cg);
+    setCrankKnowledges(ck);
   }, []);
 
   useEffect(() => {
@@ -82,6 +88,12 @@ export default function WorkersPage() {
     for (const w of workers) {
       if (w.assignedGroupNames.length === 0) {
         result.set(w.id, { groupCount: 0, productCount: 0, keywordCount: 0 });
+      } else if (w.mode === 'crank') {
+        let keywordCount = 0;
+        for (const k of crankKnowledges) {
+          if (k.groupName && w.assignedGroupNames.includes(k.groupName)) keywordCount++;
+        }
+        result.set(w.id, { groupCount: w.assignedGroupNames.length, productCount: 0, keywordCount });
       } else {
         const productIds = new Set<string>();
         let keywordCount = 0;
@@ -95,7 +107,7 @@ export default function WorkersPage() {
       }
     }
     return result;
-  }, [workers, groups, allKnowledges]);
+  }, [workers, groups, allKnowledges, crankKnowledges]);
 
   const handleAdd = async () => {
     if (!addForm.name || !addForm.loginId || !addForm.loginPassword) {
@@ -163,11 +175,22 @@ export default function WorkersPage() {
 
   const productCountForEditWorkerGroup = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const g of groups) {
-      counts.set(g.groupName, allKnowledges.filter((k) => k.groupName === g.groupName).length);
+    if (editForm.mode === 'crank') {
+      for (const g of crankGroups) {
+        counts.set(g.groupName, crankKnowledges.filter((k) => k.groupName === g.groupName).length);
+      }
+    } else {
+      for (const g of groups) {
+        counts.set(g.groupName, allKnowledges.filter((k) => k.groupName === g.groupName).length);
+      }
     }
     return counts;
-  }, [groups, allKnowledges]);
+  }, [editForm.mode, groups, allKnowledges, crankGroups, crankKnowledges]);
+
+  const editGroupList = useMemo(() => {
+    if (editForm.mode === 'crank') return crankGroups;
+    return groups;
+  }, [editForm.mode, groups, crankGroups]);
 
   const onlineCount = statuses.filter((s) => s.connectionStatus === 'online').length;
   const runningCount = statuses.filter((s) => s.runnerStatus === 'running').length;
@@ -369,7 +392,7 @@ export default function WorkersPage() {
               </FormControl>
               <FormControl>
                 <FormLabel>작업 모드</FormLabel>
-                <Select value={editForm.mode} onChange={(e) => setEditForm({ ...editForm, mode: e.target.value as KnowledgeMode })}>
+                <Select value={editForm.mode} onChange={(e) => setEditForm({ ...editForm, mode: e.target.value as KnowledgeMode, assignedGroupNames: [] })}>
                   <option value="shopping">상품 (쇼핑 상위노출)</option>
                   <option value="blog">사이트 (블로그/사이트 상위노출)</option>
                   <option value="crank">C랭크 (카페 상위노출)</option>
@@ -390,18 +413,18 @@ export default function WorkersPage() {
                   onChange={(vals) => setEditForm({ ...editForm, assignedGroupNames: vals as string[] })}
                 >
                   <Stack spacing={2}>
-                    {groups.map((g) => {
+                    {editGroupList.map((g) => {
                       const pCount = productCountForEditWorkerGroup.get(g.groupName) ?? 0;
                       return (
                         <Checkbox key={g.id} value={g.groupName}>
                           {g.groupName}
                           <Text as="span" fontSize="xs" color="gray.500" ml={2}>
-                            ({pCount}개 상품)
+                            ({pCount}개 {editForm.mode === 'crank' ? '키워드' : '상품'})
                           </Text>
                         </Checkbox>
                       );
                     })}
-                    {groups.length === 0 && (
+                    {editGroupList.length === 0 && (
                       <Text fontSize="sm" color="gray.400">등록된 그룹이 없습니다</Text>
                     )}
                   </Stack>
