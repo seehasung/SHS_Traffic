@@ -226,7 +226,7 @@ class CafeService {
           if (onclick.includes('mnu.link')) return;
           const href = anchor.href || anchor.getAttribute('href') || '';
           if (href.includes('ArticleList') && !href.includes('javascript:')) {
-            const ul = li.closest('ul.cafe-menu-list');
+            const ul = li.closest('ul.cafe-menu-list') as HTMLElement | null;
             const isVisible = ul ? ul.style.display !== 'none' : true;
             if (isVisible) validLinks.push(anchor);
           }
