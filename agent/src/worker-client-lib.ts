@@ -3,7 +3,7 @@ import os from 'os';
 import fs from 'fs';
 import path from 'path';
 import { EventEmitter } from 'events';
-import type { WorkerMessage, ServerToWorkerMessage, Settings, Knowledge, NaverAccount } from '@shared/types';
+import type { WorkerMessage, ServerToWorkerMessage, Settings, Knowledge, NaverAccount, CRankKnowledge } from '@shared/types';
 
 interface WorkerClientOptions {
   serverUrl: string;
@@ -46,6 +46,8 @@ export class WorkerClient extends EventEmitter {
   private settings: Settings | null = null;
   private knowledges: Knowledge[] = [];
   private naverAccounts: NaverAccount[] = [];
+  private crankKnowledges: CRankKnowledge[] = [];
+  private crankSettings: Settings | null = null;
   private isRunning = false;
   private isStopping = false;
   private progressCount = 0;
@@ -85,6 +87,8 @@ export class WorkerClient extends EventEmitter {
       if (Array.isArray(parsed.knowledges)) this.knowledges = parsed.knowledges;
       if (Array.isArray(parsed.naverAccounts)) this.naverAccounts = parsed.naverAccounts;
       if (typeof parsed.workerId === 'string') this.workerId = parsed.workerId;
+      if (Array.isArray(parsed.crankKnowledges)) this.crankKnowledges = parsed.crankKnowledges;
+      if (parsed.crankSettings) this.crankSettings = parsed.crankSettings;
       console.log(
         `[Worker] 로컬 캐시 로드: knowledges=${this.knowledges.length}, accounts=${this.naverAccounts.length}`,
       );
@@ -101,6 +105,8 @@ export class WorkerClient extends EventEmitter {
         settings: this.settings,
         knowledges: this.knowledges,
         naverAccounts: this.naverAccounts,
+        crankKnowledges: this.crankKnowledges,
+        crankSettings: this.crankSettings,
         savedAt: Date.now(),
       };
       fs.writeFileSync(this.cacheFile, JSON.stringify(payload), 'utf-8');
@@ -256,6 +262,8 @@ export class WorkerClient extends EventEmitter {
         this.settings = msg.settings;
         this.knowledges = msg.knowledges;
         this.naverAccounts = msg.naverAccounts;
+        if (msg.crankKnowledges) this.crankKnowledges = msg.crankKnowledges;
+        if (msg.crankSettings) this.crankSettings = msg.crankSettings;
         this.isAuthenticated = true;
         this.saveCacheToDisk();
         this.startHeartbeat();
@@ -289,6 +297,8 @@ export class WorkerClient extends EventEmitter {
         this.settings = msg.settings;
         this.knowledges = msg.knowledges;
         this.naverAccounts = msg.naverAccounts;
+        if (msg.crankKnowledges) this.crankKnowledges = msg.crankKnowledges;
+        if (msg.crankSettings) this.crankSettings = msg.crankSettings;
         this.saveCacheToDisk();
         this.emit('knowledges', this.knowledges);
         break;
@@ -402,6 +412,14 @@ export class WorkerClient extends EventEmitter {
             },
             onRankFound: (info) => {
               this.sendRankReport(info);
+            },
+            crankKnowledges: this.crankKnowledges,
+            crankSettings: this.crankSettings ?? undefined,
+            onCRankReport: (info) => {
+              this.sendCRankReport(info);
+            },
+            onCRankFailed: (info) => {
+              this.sendCRankFailed(info);
             },
           });
         } catch (e: any) {
@@ -534,6 +552,28 @@ export class WorkerClient extends EventEmitter {
       } catch {
         // ignore
       }
+    }
+  }
+
+  private sendCRankReport(info: { keyword: string; cafeName: string; postTitle: string; groupName?: string; rankPosition: number | null; found: boolean }) {
+    if (this.ws?.readyState === WebSocket.OPEN && this.isAuthenticated) {
+      try {
+        this.ws.send(JSON.stringify({ type: 'worker:crank-report', ...info }));
+      } catch { /* ignore */ }
+    }
+  }
+
+  private sendCRankFailed(info: { crankKnowledgeId: string; keyword: string; cafeName: string; postTitle: string }) {
+    // 로컬에서 즉시 비활성화
+    const idx = this.crankKnowledges.findIndex((k) => k.id === info.crankKnowledgeId);
+    if (idx !== -1) {
+      this.crankKnowledges[idx] = { ...this.crankKnowledges[idx], isActive: false };
+      this.saveCacheToDisk();
+    }
+    if (this.ws?.readyState === WebSocket.OPEN && this.isAuthenticated) {
+      try {
+        this.ws.send(JSON.stringify({ type: 'worker:crank-failed', ...info }));
+      } catch { /* ignore */ }
     }
   }
 

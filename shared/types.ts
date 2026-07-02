@@ -7,6 +7,8 @@ export type YN = 'Y' | 'N';
 export type PageType = 'pc' | 'mobile' | 'random';
 /** 키워드 동작 모드: 쇼핑 상위노출 vs 블로그/사이트 상위노출. */
 export type KnowledgeMode = 'shopping' | 'blog';
+/** 설정 모드 (쇼핑/블로그/C랭크). */
+export type SettingsMode = 'shopping' | 'blog' | 'crank';
 
 /** 로컬 사용자. 단일 사용자가 일반적이지만 멀티유저도 지원. */
 export interface UserAccount {
@@ -74,6 +76,10 @@ export interface Settings {
   shoppingRandomSearch?: YN;
   vpnType?: 'hi' | 'cool' | 'momo';
   maxPages?: number;
+  /** C랭크: 최대 검색 순위 (기본 100) */
+  maxCafeRank?: number;
+  /** C랭크: 카페 내 게시판 진입 수 (기본 3) */
+  cafeInternalClicks?: number;
   서비스번호?: number;
   상품번호?: number;
 }
@@ -226,6 +232,46 @@ export type WorkerMessage =
       reason: string;
     };
 
+/** 카페 관리 마스터 데이터. */
+export interface CafeEntry {
+  id: string;
+  cafeName: string;
+  postTitle: string;
+  targetKeyword: string;
+  createdAt: number;
+}
+
+/** C랭크 키워드 그룹. */
+export interface CRankGroup {
+  id: string;
+  groupName: string;
+  createdAt: number;
+}
+
+/** C랭크 키워드 행. */
+export interface CRankKnowledge {
+  id: string;
+  keyword: string;
+  cafeName: string;
+  postTitle: string;
+  groupName?: string;
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** C랭크 순위 조회 결과 */
+export interface CRankCheck {
+  id: number;
+  keyword: string;
+  cafeName: string;
+  postTitle: string;
+  groupName?: string;
+  rankPosition: number | null;
+  found: boolean;
+  checkedAt: number;
+}
+
 /** 순위 조회 결과 */
 export interface RankCheck {
   id: number;
@@ -244,8 +290,8 @@ export interface RankCheck {
 
 /** 서버 → 워커 WebSocket 메시지. */
 export type ServerToWorkerMessage =
-  | { type: 'auth:ok'; workerId: string; settings: Settings; knowledges: Knowledge[]; naverAccounts: NaverAccount[] }
+  | { type: 'auth:ok'; workerId: string; settings: Settings; knowledges: Knowledge[]; naverAccounts: NaverAccount[]; crankKnowledges?: CRankKnowledge[]; crankSettings?: Settings }
   | { type: 'auth:fail'; reason: string }
   | { type: 'command:start' }
   | { type: 'command:stop' }
-  | { type: 'config:update'; settings: Settings; knowledges: Knowledge[]; naverAccounts: NaverAccount[] };
+  | { type: 'config:update'; settings: Settings; knowledges: Knowledge[]; naverAccounts: NaverAccount[]; crankKnowledges?: CRankKnowledge[]; crankSettings?: Settings };

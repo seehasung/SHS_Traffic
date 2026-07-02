@@ -1,6 +1,6 @@
 // SQLite ↔ 도메인 객체 매핑. 한 곳에 모아두면 라우트가 매우 단순해진다.
 import { db } from './db';
-import type { Knowledge, NaverAccount, Settings, LogEntry, LogLevel, KeywordGroup, Worker, Product, FailedKeyword, RankCheck } from '@shared/types';
+import type { Knowledge, NaverAccount, Settings, LogEntry, LogLevel, KeywordGroup, Worker, Product, FailedKeyword, RankCheck, CafeEntry, CRankGroup, CRankKnowledge, CRankCheck } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/types';
 import { uid } from 'uid';
 
@@ -253,7 +253,7 @@ export const settingsRepo = {
   save(next: Settings): Settings {
     return this.saveByMode('shopping', next);
   },
-  getByMode(mode: 'shopping' | 'blog'): Settings {
+  getByMode(mode: 'shopping' | 'blog' | 'crank'): Settings {
     const key = `app:${mode}`;
     // 먼저 모드별 키를 찾고, 없으면 기존 'app' 키 폴백
     let row = db().prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
@@ -267,7 +267,7 @@ export const settingsRepo = {
       return { ...DEFAULT_SETTINGS };
     }
   },
-  saveByMode(mode: 'shopping' | 'blog', next: Settings): Settings {
+  saveByMode(mode: 'shopping' | 'blog' | 'crank', next: Settings): Settings {
     const key = `app:${mode}`;
     const merged = { ...DEFAULT_SETTINGS, ...next };
     const exists = db().prepare(`SELECT 1 FROM settings WHERE key = ?`).get(key);
@@ -546,5 +546,157 @@ export const rankChecksRepo = {
   },
   clearAll() {
     db().prepare(`DELETE FROM rank_checks`).run();
+  },
+};
+
+/* ─── 카페 관리 (CafeEntry) ─── */
+function rowToCafeEntry(row: any): CafeEntry {
+  return { id: row.id, cafeName: row.cafe_name, postTitle: row.post_title, targetKeyword: row.target_keyword, createdAt: row.created_at };
+}
+
+export const cafeEntriesRepo = {
+  findAll(): CafeEntry[] {
+    return (db().prepare(`SELECT * FROM cafe_entries ORDER BY created_at DESC`).all() as any[]).map(rowToCafeEntry);
+  },
+  findById(id: string): CafeEntry | undefined {
+    const row = db().prepare(`SELECT * FROM cafe_entries WHERE id = ?`).get(id);
+    return row ? rowToCafeEntry(row) : undefined;
+  },
+  create(input: Omit<CafeEntry, 'id' | 'createdAt'>): CafeEntry {
+    const id = uid(16);
+    const now = Date.now();
+    db().prepare(`INSERT INTO cafe_entries(id, cafe_name, post_title, target_keyword, created_at) VALUES(?,?,?,?,?)`)
+      .run(id, input.cafeName, input.postTitle, input.targetKeyword, now);
+    return rowToCafeEntry(db().prepare(`SELECT * FROM cafe_entries WHERE id = ?`).get(id));
+  },
+  bulkCreate(items: Omit<CafeEntry, 'id' | 'createdAt'>[]): number {
+    const stmt = db().prepare(`INSERT INTO cafe_entries(id, cafe_name, post_title, target_keyword, created_at) VALUES(?,?,?,?,?)`);
+    const tx = db().transaction(() => {
+      let count = 0;
+      for (const item of items) {
+        stmt.run(uid(16), item.cafeName, item.postTitle, item.targetKeyword, Date.now());
+        count++;
+      }
+      return count;
+    });
+    return tx();
+  },
+  delete(id: string) {
+    db().prepare(`DELETE FROM cafe_entries WHERE id = ?`).run(id);
+  },
+};
+
+/* ─── C랭크 그룹 (CRankGroup) ─── */
+function rowToCRankGroup(row: any): CRankGroup {
+  return { id: row.id, groupName: row.group_name, createdAt: row.created_at };
+}
+
+export const crankGroupsRepo = {
+  findAll(): CRankGroup[] {
+    return (db().prepare(`SELECT * FROM crank_groups ORDER BY created_at ASC`).all() as any[]).map(rowToCRankGroup);
+  },
+  create(groupName: string): CRankGroup {
+    const id = uid(16);
+    const now = Date.now();
+    db().prepare(`INSERT INTO crank_groups(id, group_name, created_at) VALUES(?,?,?)`).run(id, groupName, now);
+    return rowToCRankGroup(db().prepare(`SELECT * FROM crank_groups WHERE id = ?`).get(id));
+  },
+  delete(id: string) {
+    const group = db().prepare(`SELECT * FROM crank_groups WHERE id = ?`).get(id) as any;
+    if (group) {
+      db().prepare(`DELETE FROM crank_knowledges WHERE group_name = ?`).run(group.group_name);
+    }
+    db().prepare(`DELETE FROM crank_groups WHERE id = ?`).run(id);
+  },
+};
+
+/* ─── C랭크 키워드 (CRankKnowledge) ─── */
+function rowToCRankKnowledge(row: any): CRankKnowledge {
+  return {
+    id: row.id, keyword: row.keyword, cafeName: row.cafe_name, postTitle: row.post_title,
+    groupName: row.group_name, isActive: !!row.is_active, createdAt: row.created_at, updatedAt: row.updated_at,
+  };
+}
+
+export const crankKnowledgesRepo = {
+  findAll(): CRankKnowledge[] {
+    return (db().prepare(`SELECT * FROM crank_knowledges ORDER BY created_at DESC`).all() as any[]).map(rowToCRankKnowledge);
+  },
+  findByGroup(groupName: string): CRankKnowledge[] {
+    return (db().prepare(`SELECT * FROM crank_knowledges WHERE group_name = ? ORDER BY created_at DESC`).all(groupName) as any[]).map(rowToCRankKnowledge);
+  },
+  create(input: Omit<CRankKnowledge, 'id' | 'createdAt' | 'updatedAt' | 'isActive'>): CRankKnowledge {
+    const id = uid(16);
+    const now = Date.now();
+    db().prepare(`INSERT INTO crank_knowledges(id, keyword, cafe_name, post_title, group_name, is_active, created_at, updated_at) VALUES(?,?,?,?,?,1,?,?)`)
+      .run(id, input.keyword, input.cafeName, input.postTitle, input.groupName ?? null, now, now);
+    return rowToCRankKnowledge(db().prepare(`SELECT * FROM crank_knowledges WHERE id = ?`).get(id));
+  },
+  update(id: string, patch: Partial<Pick<CRankKnowledge, 'isActive'>>) {
+    const sets: string[] = [];
+    const vals: any[] = [];
+    if (patch.isActive !== undefined) { sets.push('is_active = ?'); vals.push(patch.isActive ? 1 : 0); }
+    if (sets.length === 0) return;
+    sets.push('updated_at = ?'); vals.push(Date.now());
+    vals.push(id);
+    db().prepare(`UPDATE crank_knowledges SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+  },
+  setGroupActive(groupName: string, isActive: boolean) {
+    db().prepare(`UPDATE crank_knowledges SET is_active = ?, updated_at = ? WHERE group_name = ?`).run(isActive ? 1 : 0, Date.now(), groupName);
+  },
+  delete(id: string) {
+    db().prepare(`DELETE FROM crank_knowledges WHERE id = ?`).run(id);
+  },
+};
+
+/* ─── C랭크 순위 체크 (CRankCheck) ─── */
+function rowToCRankCheck(row: any): CRankCheck {
+  return {
+    id: row.id, keyword: row.keyword, cafeName: row.cafe_name, postTitle: row.post_title,
+    groupName: row.group_name, rankPosition: row.rank_position, found: !!row.found, checkedAt: row.checked_at,
+  };
+}
+
+export const crankChecksRepo = {
+  latest(): CRankCheck[] {
+    const rows = db().prepare(`
+      SELECT r.* FROM crank_checks r
+      INNER JOIN (
+        SELECT keyword, cafe_name, post_title, MAX(checked_at) as max_checked
+        FROM crank_checks GROUP BY keyword, cafe_name, post_title
+      ) latest ON r.keyword = latest.keyword AND r.cafe_name = latest.cafe_name AND r.post_title = latest.post_title AND r.checked_at = latest.max_checked
+      ORDER BY r.keyword, r.cafe_name
+    `).all();
+    return rows.map(rowToCRankCheck);
+  },
+  save(input: Omit<CRankCheck, 'id'>): CRankCheck {
+    const result = db().prepare(
+      `INSERT INTO crank_checks(keyword, cafe_name, post_title, group_name, rank_position, found, checked_at) VALUES(?,?,?,?,?,?,?)`
+    ).run(input.keyword, input.cafeName, input.postTitle, input.groupName ?? null, input.rankPosition, input.found ? 1 : 0, input.checkedAt);
+    return rowToCRankCheck(db().prepare(`SELECT * FROM crank_checks WHERE id = ?`).get(result.lastInsertRowid));
+  },
+  history(keyword: string, cafeName: string, postTitle: string): CRankCheck[] {
+    return (db().prepare(
+      `SELECT * FROM crank_checks WHERE keyword = ? AND cafe_name = ? AND post_title = ? ORDER BY checked_at DESC LIMIT 100`
+    ).all(keyword, cafeName, postTitle) as any[]).map(rowToCRankCheck);
+  },
+  clickCountByRange(startMs: number, endMs: number): number {
+    const row = db().prepare(`SELECT COUNT(*) as cnt FROM crank_checks WHERE found = 1 AND checked_at >= ? AND checked_at < ?`).get(startMs, endMs) as any;
+    return row?.cnt ?? 0;
+  },
+  clickTodayPerKeyword(startMs: number, endMs: number): { keyword: string; cafeName: string; postTitle: string; count: number }[] {
+    const rows = db().prepare(`
+      SELECT keyword, cafe_name, post_title, COUNT(*) as cnt FROM crank_checks
+      WHERE found = 1 AND checked_at >= ? AND checked_at < ? GROUP BY keyword, cafe_name, post_title
+    `).all(startMs, endMs) as any[];
+    return rows.map((r: any) => ({ keyword: r.keyword, cafeName: r.cafe_name, postTitle: r.post_title, count: r.cnt }));
+  },
+  clickHistory(keyword: string, cafeName: string, postTitle: string): { date: string; count: number }[] {
+    const rows = db().prepare(`
+      SELECT DATE(checked_at / 1000, 'unixepoch', 'localtime') as day, COUNT(*) as cnt
+      FROM crank_checks WHERE found = 1 AND keyword = ? AND cafe_name = ? AND post_title = ?
+      GROUP BY day ORDER BY day DESC LIMIT 30
+    `).all(keyword, cafeName, postTitle) as any[];
+    return rows.map((r: any) => ({ date: r.day, count: r.cnt }));
   },
 };

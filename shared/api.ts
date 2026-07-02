@@ -39,6 +39,18 @@ export const API = {
   rankChecks: '/api/rank-checks',
   rankCheckStart: '/api/rank-checks/start',
   rankCheckStatus: '/api/rank-checks/status',
+
+  // C랭크 (카페)
+  cafeEntries: '/api/cafe-entries',
+  cafeEntry: (id: string) => `/api/cafe-entries/${encodeURIComponent(id)}`,
+
+  crankGroups: '/api/crank-groups',
+  crankGroup: (id: string) => `/api/crank-groups/${encodeURIComponent(id)}`,
+
+  crankKnowledges: '/api/crank-knowledges',
+  crankKnowledge: (id: string) => `/api/crank-knowledges/${encodeURIComponent(id)}`,
+
+  crankChecks: '/api/crank-checks',
 } as const;
 
 export const WS_PATH = '/ws';

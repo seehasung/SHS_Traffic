@@ -220,4 +220,50 @@ function migrate(db: Database.Database) {
     `);
     db.prepare(`UPDATE schema_version SET version = 11`).run();
   }
+
+  const current12 = (db.prepare(`SELECT version FROM schema_version`).get() as { version: number }).version;
+  if (current12 < 12) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS cafe_entries (
+        id TEXT PRIMARY KEY,
+        cafe_name TEXT NOT NULL,
+        post_title TEXT NOT NULL,
+        target_keyword TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS crank_groups (
+        id TEXT PRIMARY KEY,
+        group_name TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS crank_knowledges (
+        id TEXT PRIMARY KEY,
+        keyword TEXT NOT NULL,
+        cafe_name TEXT NOT NULL,
+        post_title TEXT NOT NULL,
+        group_name TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS crank_checks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        keyword TEXT NOT NULL,
+        cafe_name TEXT NOT NULL,
+        post_title TEXT NOT NULL,
+        group_name TEXT,
+        rank_position INTEGER,
+        found INTEGER NOT NULL DEFAULT 0,
+        checked_at INTEGER NOT NULL
+      );
+    `);
+    // C랭크 설정 초기값
+    const def = JSON.stringify(DEFAULT_SETTINGS);
+    db.prepare(`INSERT OR IGNORE INTO settings(key, value) VALUES('app:crank', ?)`).run(def);
+
+    db.prepare(`UPDATE schema_version SET version = 12`).run();
+  }
 }

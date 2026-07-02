@@ -90,8 +90,8 @@ export const api = {
     remove: (id: string) => call<{ ok: true }>('DELETE', API.naverAccount(id)),
   },
   settings: {
-    get: (mode?: 'shopping' | 'blog') => call<{ settings: Settings }>('GET', `${API.settings}${mode ? `?mode=${mode}` : ''}`).then((r) => r.settings),
-    save: (s: Settings, mode?: 'shopping' | 'blog') => call<{ settings: Settings }>('PUT', `${API.settings}${mode ? `?mode=${mode}` : ''}`, s).then((r) => r.settings),
+    get: (mode?: 'shopping' | 'blog' | 'crank') => call<{ settings: Settings }>('GET', `${API.settings}${mode ? `?mode=${mode}` : ''}`).then((r) => r.settings),
+    save: (s: Settings, mode?: 'shopping' | 'blog' | 'crank') => call<{ settings: Settings }>('PUT', `${API.settings}${mode ? `?mode=${mode}` : ''}`, s).then((r) => r.settings),
   },
   runner: {
     status: () => call<{ snapshot: RunnerSnapshot }>('GET', API.runnerStatus).then((r) => r.snapshot),
@@ -163,6 +163,49 @@ export const api = {
     history: (itemName: string, keyword: string) =>
       call<{ items: import('@shared/types').RankCheck[] }>('GET', `/api/rank-checks/history?itemName=${encodeURIComponent(itemName)}&keyword=${encodeURIComponent(keyword)}`).then((r) => r.items),
     clear: () => call<{ ok: true }>('DELETE', API.rankChecks),
+  },
+
+  // ─── C랭크 (카페) ───
+  cafeEntries: {
+    list: () => call<{ items: import('@shared/types').CafeEntry[] }>('GET', API.cafeEntries).then((r) => r.items),
+    create: (data: { cafeName: string; postTitle: string; targetKeyword: string }) =>
+      call<{ item: import('@shared/types').CafeEntry }>('POST', API.cafeEntries, data).then((r) => r.item),
+    bulk: (items: { cafeName: string; postTitle: string; targetKeyword: string }[]) =>
+      call<{ ok: true; created: number }>('POST', `${API.cafeEntries}/bulk`, { items }),
+    remove: (id: string) => call<{ ok: true }>('DELETE', API.cafeEntry(id)),
+  },
+  crankGroups: {
+    list: () => call<{ items: import('@shared/types').CRankGroup[] }>('GET', API.crankGroups).then((r) => r.items),
+    create: (groupName: string) =>
+      call<{ item: import('@shared/types').CRankGroup }>('POST', API.crankGroups, { groupName }).then((r) => r.item),
+    remove: (id: string) => call<{ ok: true }>('DELETE', API.crankGroup(id)),
+  },
+  crankKnowledges: {
+    list: (groupName?: string) => {
+      const qs = groupName ? `?groupName=${encodeURIComponent(groupName)}` : '';
+      return call<{ items: import('@shared/types').CRankKnowledge[] }>('GET', `${API.crankKnowledges}${qs}`).then((r) => r.items);
+    },
+    create: (data: { keyword: string; cafeName: string; postTitle: string; groupName?: string }) =>
+      call<{ item: import('@shared/types').CRankKnowledge }>('POST', API.crankKnowledges, data).then((r) => r.item),
+    setActive: (id: string, isActive: boolean) =>
+      call<{ ok: true }>('PATCH', `/api/crank-knowledges/${encodeURIComponent(id)}/active`, { isActive }),
+    setGroupActive: (groupName: string, isActive: boolean) =>
+      call<{ ok: true }>('PATCH', '/api/crank-knowledges/group-active', { groupName, isActive }),
+    remove: (id: string) => call<{ ok: true }>('DELETE', API.crankKnowledge(id)),
+  },
+  crankChecks: {
+    list: () => call<{ items: import('@shared/types').CRankCheck[] }>('GET', API.crankChecks).then((r) => r.items),
+    history: (keyword: string, cafeName: string, postTitle: string) =>
+      call<{ items: import('@shared/types').CRankCheck[] }>('GET',
+        `/api/crank-checks/history?keyword=${encodeURIComponent(keyword)}&cafeName=${encodeURIComponent(cafeName)}&postTitle=${encodeURIComponent(postTitle)}`
+      ).then((r) => r.items),
+  },
+  crankClickStats: {
+    get: () => call<{ today: number; yesterday: number; dayBefore: number; thisWeek: number; todayPerKeyword: { keyword: string; cafeName: string; postTitle: string; count: number }[] }>('GET', '/api/crank-click-stats'),
+    history: (keyword: string, cafeName: string, postTitle: string) =>
+      call<{ items: { date: string; count: number }[] }>('GET',
+        `/api/crank-click-stats/history?keyword=${encodeURIComponent(keyword)}&cafeName=${encodeURIComponent(cafeName)}&postTitle=${encodeURIComponent(postTitle)}`
+      ).then((r) => r.items),
   },
 };
 

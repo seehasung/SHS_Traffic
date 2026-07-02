@@ -21,7 +21,7 @@ import {
   verifyWorkerLogin,
 } from './auth';
 import type { SessionPayload } from './auth';
-import { keywordGroupsRepo, knowledgesRepo, naverAccountsRepo, settingsRepo, logsRepo, workersRepo, productsRepo, workerLogsRepo, failedKeywordsRepo, rankChecksRepo } from './repos';
+import { keywordGroupsRepo, knowledgesRepo, naverAccountsRepo, settingsRepo, logsRepo, workersRepo, productsRepo, workerLogsRepo, failedKeywordsRepo, rankChecksRepo, cafeEntriesRepo, crankGroupsRepo, crankKnowledgesRepo, crankChecksRepo } from './repos';
 import { runner } from './runner';
 import { staticWebDir } from './paths';
 
@@ -77,21 +77,27 @@ function getWorkerStatusList(): WorkerStatus[] {
 function broadcastConfigToAllWorkers() {
   const allKnowledges = knowledgesRepo.list().filter((k) => k.isActive !== false);
   const naverAccounts = naverAccountsRepo.list();
+  const allCrankKnowledges = crankKnowledgesRepo.findAll().filter((k) => k.isActive);
+  const crankSettings = settingsRepo.getByMode('crank');
   for (const worker of workersRepo.list()) {
     const ws = workerSockets.get(worker.id);
     if (!ws || ws.readyState !== WebSocket.OPEN) continue;
-    // 워커 모드에 맞는 설정과 키워드 전달
     const workerMode = worker.mode ?? 'shopping';
     const workerSettings = settingsRepo.getByMode(workerMode);
     const modeFiltered = allKnowledges.filter((k) => (k.mode ?? 'shopping') === workerMode);
     const assignedKnowledges = worker.assignedGroupNames.length > 0
       ? modeFiltered.filter((k) => k.groupName && worker.assignedGroupNames.includes(k.groupName))
       : [];
+    const assignedCrank = worker.assignedGroupNames.length > 0
+      ? allCrankKnowledges.filter((k) => k.groupName && worker.assignedGroupNames.includes(k.groupName))
+      : [];
     const update: ServerToWorkerMessage = {
       type: 'config:update',
       settings: workerSettings,
       knowledges: assignedKnowledges,
       naverAccounts,
+      crankKnowledges: assignedCrank,
+      crankSettings,
     };
     try {
       ws.send(JSON.stringify(update));
@@ -228,11 +234,17 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
         const assignedKnowledges = updated.assignedGroupNames.length > 0
           ? allKnowledges.filter((k) => k.groupName && updated.assignedGroupNames.includes(k.groupName))
           : [];
+        const allCrankActive = crankKnowledgesRepo.findAll().filter((k) => k.isActive);
+        const assignedCrank = updated.assignedGroupNames.length > 0
+          ? allCrankActive.filter((k) => k.groupName && updated.assignedGroupNames.includes(k.groupName))
+          : [];
         const update: ServerToWorkerMessage = {
           type: 'config:update',
           settings: settingsRepo.getByMode(workerMode),
           knowledges: assignedKnowledges,
           naverAccounts: naverAccountsRepo.list(),
+          crankKnowledges: assignedCrank,
+          crankSettings: settingsRepo.getByMode('crank'),
         };
         ws.send(JSON.stringify(update));
       }
@@ -382,10 +394,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   });
 
   // ──────────────── settings ────────────────
-  // mode 쿼리 파라미터로 설정 모드 구분: ?mode=shopping 또는 ?mode=blog
+  // mode 쿼리 파라미터로 설정 모드 구분: ?mode=shopping|blog|crank
   app.get(API.settings, (req, res) => {
     const session = req.session!;
-    const mode = (req.query.mode as string) === 'blog' ? 'blog' : 'shopping';
+    const qm = req.query.mode as string;
+    const mode = qm === 'blog' ? 'blog' : qm === 'crank' ? 'crank' : 'shopping';
     const hostSettings = settingsRepo.getByMode(mode);
     if (session.role === 'worker' && session.workerId) {
       const workerOverride = workersRepo.getSettings(session.workerId);
@@ -395,12 +408,15 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   });
   app.put(API.settings, (req, res) => {
     const session = req.session!;
-    const mode = (req.query.mode as string) === 'blog' ? 'blog' : 'shopping';
+    const qm = req.query.mode as string;
+    const mode = qm === 'blog' ? 'blog' : qm === 'crank' ? 'crank' : 'shopping';
     if (session.role === 'worker' && session.workerId) {
       workersRepo.saveSettings(session.workerId, req.body);
       return res.json({ settings: req.body });
     }
-    res.json({ settings: settingsRepo.saveByMode(mode, req.body) });
+    const saved = settingsRepo.saveByMode(mode, req.body);
+    broadcastConfigToAllWorkers();
+    res.json({ settings: saved });
   });
 
   // ──────────────── runner (로컬 실행용, 호환 유지) ────────────────
@@ -480,6 +496,107 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     const workerId = (req.query.workerId as string | undefined) || undefined;
     workerLogsRepo.clear(workerId);
     res.json({ ok: true });
+  });
+
+  // ──────────────── cafe entries (카페 관리) ────────────────
+  app.get(API.cafeEntries, (_req, res) => res.json({ items: cafeEntriesRepo.findAll() }));
+  app.post(API.cafeEntries, requireAdmin, (req, res) => {
+    const { cafeName, postTitle, targetKeyword } = req.body;
+    if (!cafeName || !postTitle || !targetKeyword) return res.status(400).json({ error: 'INVALID_INPUT' });
+    res.json({ item: cafeEntriesRepo.create({ cafeName, postTitle, targetKeyword }) });
+  });
+  app.post(`${API.cafeEntries}/bulk`, requireAdmin, (req, res) => {
+    const { items } = req.body;
+    if (!Array.isArray(items)) return res.status(400).json({ error: 'INVALID_INPUT' });
+    const valid = items.filter((i: any) => i.cafeName && i.postTitle && i.targetKeyword);
+    const count = cafeEntriesRepo.bulkCreate(valid);
+    res.json({ ok: true, created: count });
+  });
+  app.delete('/api/cafe-entries/:id', requireAdmin, (req, res) => {
+    cafeEntriesRepo.delete(req.params.id);
+    res.json({ ok: true });
+  });
+
+  // ──────────────── crank groups (C랭크 그룹) ────────────────
+  app.get(API.crankGroups, (_req, res) => res.json({ items: crankGroupsRepo.findAll() }));
+  app.post(API.crankGroups, requireAdmin, (req, res) => {
+    const { groupName } = req.body;
+    if (!groupName) return res.status(400).json({ error: 'INVALID_INPUT' });
+    res.json({ item: crankGroupsRepo.create(groupName) });
+  });
+  app.delete('/api/crank-groups/:id', requireAdmin, (req, res) => {
+    crankGroupsRepo.delete(req.params.id);
+    broadcastConfigToAllWorkers();
+    res.json({ ok: true });
+  });
+
+  // ──────────────── crank knowledges (C랭크 키워드) ────────────────
+  app.get(API.crankKnowledges, (req, res) => {
+    const groupName = req.query.groupName as string | undefined;
+    const items = groupName ? crankKnowledgesRepo.findByGroup(groupName) : crankKnowledgesRepo.findAll();
+    res.json({ items });
+  });
+  app.post(API.crankKnowledges, requireAdmin, (req, res) => {
+    const { keyword, cafeName, postTitle, groupName } = req.body;
+    if (!keyword || !cafeName || !postTitle) return res.status(400).json({ error: 'INVALID_INPUT' });
+    const item = crankKnowledgesRepo.create({ keyword, cafeName, postTitle, groupName });
+    broadcastConfigToAllWorkers();
+    res.json({ item });
+  });
+  app.patch('/api/crank-knowledges/:id/active', requireAdmin, (req, res) => {
+    const isActive = !!req.body?.isActive;
+    crankKnowledgesRepo.update(req.params.id, { isActive });
+    broadcastConfigToAllWorkers();
+    res.json({ ok: true });
+  });
+  app.patch('/api/crank-knowledges/group-active', requireAdmin, (req, res) => {
+    const { groupName, isActive } = req.body;
+    if (!groupName) return res.status(400).json({ error: 'INVALID_INPUT' });
+    crankKnowledgesRepo.setGroupActive(groupName, !!isActive);
+    broadcastConfigToAllWorkers();
+    res.json({ ok: true });
+  });
+  app.delete('/api/crank-knowledges/:id', requireAdmin, (req, res) => {
+    crankKnowledgesRepo.delete(req.params.id);
+    broadcastConfigToAllWorkers();
+    res.json({ ok: true });
+  });
+
+  // ──────────────── crank checks (C랭크 순위 추적) ────────────────
+  app.get(API.crankChecks, (_req, res) => {
+    res.json({ items: crankChecksRepo.latest() });
+  });
+  app.get('/api/crank-checks/history', (req, res) => {
+    const keyword = req.query.keyword as string;
+    const cafeName = req.query.cafeName as string;
+    const postTitle = req.query.postTitle as string;
+    if (!keyword || !cafeName || !postTitle) return res.status(400).json({ error: 'INVALID_INPUT' });
+    res.json({ items: crankChecksRepo.history(keyword, cafeName, postTitle) });
+  });
+  app.get('/api/crank-click-stats', (_req, res) => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const tomorrowStart = todayStart + 86400000;
+    const yesterdayStart = todayStart - 86400000;
+    const dayBeforeStart = todayStart - 2 * 86400000;
+    const dayOfWeek = now.getDay();
+    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const weekStart = todayStart - mondayOffset * 86400000;
+
+    const today = crankChecksRepo.clickCountByRange(todayStart, tomorrowStart);
+    const yesterday = crankChecksRepo.clickCountByRange(yesterdayStart, todayStart);
+    const dayBefore = crankChecksRepo.clickCountByRange(dayBeforeStart, yesterdayStart);
+    const thisWeek = crankChecksRepo.clickCountByRange(weekStart, tomorrowStart);
+    const todayPerKeyword = crankChecksRepo.clickTodayPerKeyword(todayStart, tomorrowStart);
+
+    res.json({ today, yesterday, dayBefore, thisWeek, todayPerKeyword });
+  });
+  app.get('/api/crank-click-stats/history', (req, res) => {
+    const keyword = req.query.keyword as string;
+    const cafeName = req.query.cafeName as string;
+    const postTitle = req.query.postTitle as string;
+    if (!keyword || !cafeName || !postTitle) return res.status(400).json({ error: 'INVALID_INPUT' });
+    res.json({ items: crankChecksRepo.clickHistory(keyword, cafeName, postTitle) });
   });
 
   // ──────────────── failed keywords (50페이지까지 못 찾은 키워드 영구 저장) ────────────────
@@ -598,11 +715,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
             lastHeartbeat: Date.now(),
           });
 
-          // 워커 모드에 맞는 설정/키워드만 전송
           const workerMode = worker.mode ?? 'shopping';
           const allKnowledges = knowledgesRepo.list().filter((k) => k.isActive !== false && (k.mode ?? 'shopping') === workerMode);
           const assignedKnowledges = worker.assignedGroupNames.length > 0
             ? allKnowledges.filter((k) => k.groupName && worker.assignedGroupNames.includes(k.groupName))
+            : [];
+          const allCrank = crankKnowledgesRepo.findAll().filter((k) => k.isActive);
+          const assignedCrank = worker.assignedGroupNames.length > 0
+            ? allCrank.filter((k) => k.groupName && worker.assignedGroupNames.includes(k.groupName))
             : [];
 
           const ok: ServerToWorkerMessage = {
@@ -611,6 +731,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
             settings: settingsRepo.getByMode(workerMode),
             knowledges: assignedKnowledges,
             naverAccounts: naverAccountsRepo.list(),
+            crankKnowledges: assignedCrank,
+            crankSettings: settingsRepo.getByMode('crank'),
           };
           socket.send(JSON.stringify(ok));
 
@@ -711,6 +833,34 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
             checkedAt: Date.now(),
           });
           broadcastDashboard({ type: 'rank:update', rank: saved } as any);
+        }
+
+        if ((msg as any).type === 'worker:crank-report') {
+          const rm = msg as any;
+          const saved = crankChecksRepo.save({
+            keyword: rm.keyword,
+            cafeName: rm.cafeName,
+            postTitle: rm.postTitle,
+            groupName: rm.groupName,
+            rankPosition: rm.rankPosition ?? null,
+            found: rm.found !== false,
+            checkedAt: Date.now(),
+          });
+          broadcastDashboard({ type: 'crank:update', rank: saved } as any);
+        }
+
+        if ((msg as any).type === 'worker:crank-failed') {
+          const rm = msg as any;
+          if (rm.crankKnowledgeId) {
+            crankKnowledgesRepo.update(rm.crankKnowledgeId, { isActive: false });
+            broadcastConfigToAllWorkers();
+            const worker = workersRepo.list().find((w) => w.id === authenticatedWorkerId);
+            const workerName = worker?.name ?? 'Unknown';
+            const noteMsg = `[C랭크 자동 OFF] 키워드 "${rm.keyword}" 카페 "${rm.cafeName}" — 순위 밖`;
+            const note = logsRepo.append(`[워커:${authenticatedWorkerId}] ${noteMsg}`, 'warn', 0);
+            workerLogsRepo.append(authenticatedWorkerId!, workerName, noteMsg, 'warn');
+            broadcastDashboard({ type: 'log', entry: note });
+          }
         }
 
         if (msg.type === 'worker:request-start') {

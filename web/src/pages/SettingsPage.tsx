@@ -21,7 +21,7 @@ import {
   Text,
   useToast,
 } from '@chakra-ui/react';
-import type { Settings, KnowledgeMode } from '@shared/types';
+import type { Settings, KnowledgeMode, SettingsMode } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/types';
 import { api } from '@/api';
 
@@ -47,7 +47,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function SettingsForm({ mode }: { mode: KnowledgeMode }) {
+function SettingsForm({ mode }: { mode: SettingsMode }) {
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -75,6 +75,7 @@ function SettingsForm({ mode }: { mode: KnowledgeMode }) {
 
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) => setS({ ...s, [key]: value });
   const isBlog = mode === 'blog';
+  const isCrank = mode === 'crank';
 
   return (
       <Box borderWidth="1px" borderRadius="lg" p={6}>
@@ -308,7 +309,7 @@ function SettingsForm({ mode }: { mode: KnowledgeMode }) {
             </HStack>
           </Section>
 
-          {/* ── 최대 검색 페이지 ── */}
+          {/* ── 최대 검색 페이지 (쇼핑) ── */}
           {mode === 'shopping' && (
             <Section title="최대 검색 페이지">
               <Field label="상품 검색 시 최대 페이지 수">
@@ -320,6 +321,30 @@ function SettingsForm({ mode }: { mode: KnowledgeMode }) {
                 </HStack>
               </Field>
             </Section>
+          )}
+
+          {/* ── C랭크 전용 설정 ── */}
+          {isCrank && (
+            <>
+              <Section title="C랭크 검색 설정">
+                <Field label="최대 검색 순위 (카페 게시글)">
+                  <HStack>
+                    <NumberInput size="sm" w="100px" value={s.maxCafeRank ?? 100} min={1} max={500} onChange={(_, v) => set('maxCafeRank', v || 100)}>
+                      <NumberInputField />
+                    </NumberInput>
+                    <Text fontSize="sm" color="gray.500">위</Text>
+                  </HStack>
+                </Field>
+                <Field label="카페 내 게시판 진입 수">
+                  <HStack>
+                    <NumberInput size="sm" w="100px" value={s.cafeInternalClicks ?? 3} min={1} max={20} onChange={(_, v) => set('cafeInternalClicks', v || 3)}>
+                      <NumberInputField />
+                    </NumberInput>
+                    <Text fontSize="sm" color="gray.500">개</Text>
+                  </HStack>
+                </Field>
+              </Section>
+            </>
           )}
 
           {/* ── 저장 버튼 ── */}
@@ -341,6 +366,7 @@ export default function SettingsPage() {
         <TabList>
           <Tab>상품 설정 (쇼핑)</Tab>
           <Tab>사이트 설정 (블로그)</Tab>
+          <Tab>C랭크 설정</Tab>
         </TabList>
         <TabPanels>
           <TabPanel px={0}>
@@ -348,6 +374,9 @@ export default function SettingsPage() {
           </TabPanel>
           <TabPanel px={0}>
             <SettingsForm mode="blog" />
+          </TabPanel>
+          <TabPanel px={0}>
+            <SettingsForm mode="crank" />
           </TabPanel>
         </TabPanels>
       </Tabs>

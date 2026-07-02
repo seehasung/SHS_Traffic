@@ -6,8 +6,9 @@ import { imitateService } from './services/imitateService';
 import { knowledgeService } from './services/knowledgeService';
 import { blogService } from './services/blogService';
 import { blogRankService } from './services/blogRankService';
+import { cafeService } from './services/cafeService';
 import { NAVER_URL } from './constants/urls';
-import type { Knowledge, NaverAccount, Settings } from '@shared/types';
+import type { Knowledge, NaverAccount, Settings, CRankKnowledge } from '@shared/types';
 
 export interface FailedKeywordInfo {
   knowledgeId: string;
@@ -29,6 +30,22 @@ export interface RankReportInfo {
   found?: boolean;
 }
 
+export interface CRankReportInfo {
+  keyword: string;
+  cafeName: string;
+  postTitle: string;
+  groupName?: string;
+  rankPosition: number | null;
+  found: boolean;
+}
+
+export interface CRankFailedInfo {
+  crankKnowledgeId: string;
+  keyword: string;
+  cafeName: string;
+  postTitle: string;
+}
+
 export interface CrawlJobParams {
   settings: Settings;
   knowledges: Knowledge[];
@@ -39,6 +56,14 @@ export interface CrawlJobParams {
   onFailedKeyword?: (info: FailedKeywordInfo) => void;
   /** 상품 발견 시 순위 정보를 서버에 보고하는 콜백. */
   onRankFound?: (info: RankReportInfo) => void;
+  /** C랭크 키워드 목록. */
+  crankKnowledges?: CRankKnowledge[];
+  /** C랭크 설정. */
+  crankSettings?: Settings;
+  /** C랭크 순위 보고 콜백. */
+  onCRankReport?: (info: CRankReportInfo) => void;
+  /** C랭크 실패(자동 OFF) 콜백. */
+  onCRankFailed?: (info: CRankFailedInfo) => void;
 }
 
 class CrawlerController {
@@ -53,12 +78,16 @@ class CrawlerController {
 
   private onFailedKeyword?: (info: FailedKeywordInfo) => void;
   private onRankFound?: (info: RankReportInfo) => void;
+  private onCRankReport?: (info: CRankReportInfo) => void;
+  private onCRankFailed?: (info: CRankFailedInfo) => void;
 
   async run(params: CrawlJobParams): Promise<void> {
     const { settings, knowledges, naverAccounts, logFn, shouldStop } = params;
     crawlerUtil.setLogger(logFn);
     this.onFailedKeyword = params.onFailedKeyword;
     this.onRankFound = params.onRankFound;
+    this.onCRankReport = params.onCRankReport;
+    this.onCRankFailed = params.onCRankFailed;
 
     if (!knowledges.length) {
       logFn('작업할 키워드가 없습니다. 키워드를 추가해주세요.');
@@ -101,6 +130,28 @@ class CrawlerController {
         logFn(`[상위로직 ${i + 1}번째에서 오류 발생 — 다음 사이클로 넘어갑니다] ${e.message}`);
       } finally {
         if (shouldStop()) return;
+      }
+    }
+
+    // ── C랭크 카페 크롤링 ──
+    const crankList = (params.crankKnowledges ?? []).filter((k) => k.isActive);
+    if (crankList.length > 0) {
+      const shuffledCrank = shuffle(crankList);
+      const crankSettings = params.crankSettings ?? settings;
+      logFn(`\n[C랭크 카페 크롤링] ${shuffledCrank.length}개 키워드를 실행합니다.\n`);
+
+      for (let ci = 0; ci < shuffledCrank.length; ci++) {
+        if (shouldStop()) return;
+        const crankItem = shuffledCrank[ci];
+        logFn(`\n[C랭크 ${ci + 1}/${shuffledCrank.length}] 키워드="${crankItem.keyword}", 카페="${crankItem.cafeName}", 제목="${crankItem.postTitle}"\n`);
+
+        try {
+          await this._crawlCafe(crankItem, crankSettings, naverAccounts, ci + 1, shouldStop);
+        } catch (e: any) {
+          await this.close().catch(() => {});
+          if (e.message === 'CANCELLED' || e.message === 'VPN_CONNECTION_FAILED') throw e;
+          logFn(`[C랭크 ${ci + 1}번째 오류] ${e.message}`);
+        }
       }
     }
 
@@ -667,6 +718,79 @@ class CrawlerController {
 
     // 공통로직38
     await imitateService.randomClickMenuWithScroll({ page: this.page, setting: this.setting, minWaitTimeBeforeScroll: 1, maxWaitTimeBeforeScroll: 3, minWaitTimeAfterScroll: 1, maxWaitTimeAfterScroll: 3 });
+  }
+
+  private async _crawlCafe(
+    crankItem: CRankKnowledge,
+    settings: Partial<Settings>,
+    naverAccounts: NaverAccount[],
+    progressCount: number,
+    shouldStop: () => boolean,
+  ) {
+    this.setting = settings;
+    crawlerService.init(settings as Settings);
+
+    try {
+      await crawlerService.changeIpAndMacAddress({ setting: settings, userMe: settings });
+      if (shouldStop()) throw new Error('CANCELLED');
+
+      await this._openBrowser();
+      if (shouldStop()) throw new Error('CANCELLED');
+
+      if (settings.naverLoginType !== 'no' && naverAccounts.length > 0) {
+        await this._naverLogin(settings, naverAccounts, progressCount);
+      }
+      if (shouldStop()) throw new Error('CANCELLED');
+
+      await this._imitate(shouldStop);
+    } catch (e: any) {
+      if (e.message === 'CANCELLED' || e.message === 'NOT OPEN BROWSER' || e.message === 'IP CHANGE FAIL' || e.message === 'VPN_CONNECTION_FAILED') throw e;
+      crawlerUtil.log('C랭크 랜덤 서핑 오류 (무시): ' + e.message);
+    }
+
+    if (shouldStop()) { await this.close(); return; }
+    if (!this.page || !this.browser) { await this.close(); return; }
+
+    const maxRank = Number(settings.maxCafeRank) || 100;
+    const cafeInternalClicks = Number(settings.cafeInternalClicks) || 3;
+
+    try {
+      const result = await cafeService.findCafePost(
+        this.browser, this.page, settings,
+        crankItem.keyword, crankItem.cafeName, crankItem.postTitle, maxRank,
+      );
+
+      this.onCRankReport?.({
+        keyword: crankItem.keyword,
+        cafeName: crankItem.cafeName,
+        postTitle: crankItem.postTitle,
+        groupName: crankItem.groupName,
+        rankPosition: result.rankPosition,
+        found: result.found,
+      });
+
+      if (!result.found) {
+        this.onCRankFailed?.({
+          crankKnowledgeId: crankItem.id,
+          keyword: crankItem.keyword,
+          cafeName: crankItem.cafeName,
+          postTitle: crankItem.postTitle,
+        });
+      }
+
+      if (result.found && result.postPage) {
+        await cafeService.dwellInCafe(result.postPage, settings, cafeInternalClicks);
+        if (result.postPage !== this.page) {
+          await result.postPage.close().catch(() => {});
+        }
+      }
+    } catch (e: any) {
+      if (e.message === 'CANCELLED') throw e;
+      crawlerUtil.log('C랭크 크롤링 오류: ' + e.message);
+    }
+
+    if (this.page) await crawlerService.removeCookie(this.page);
+    await this.close();
   }
 
   async close() {

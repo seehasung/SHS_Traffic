@@ -13,6 +13,9 @@ import WorkersPage from '@/pages/WorkersPage';
 import ProductsPage from '@/pages/ProductsPage';
 import WorkerLogsPage from '@/pages/WorkerLogsPage';
 import RankCheckPage from '@/pages/RankCheckPage';
+import CRankPage from '@/pages/CRankPage';
+import CafeManagePage from '@/pages/CafeManagePage';
+import CRankCheckPage from '@/pages/CRankCheckPage';
 import Layout from '@/components/Layout';
 import { api } from '@/api';
 import type { LogEntry } from '@shared/types';
@@ -94,12 +97,15 @@ function Authed({
             }
           />
           <Route path="/knowledges" element={<KnowledgesPage isAdmin={isAdmin} />} />
+          <Route path="/crank" element={<CRankPage />} />
           <Route path="/naver-accounts" element={<NaverAccountsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           {isAdmin && <Route path="/workers" element={<WorkersPage />} />}
           {isAdmin && <Route path="/products" element={<ProductsPage />} />}
+          {isAdmin && <Route path="/cafe-manage" element={<CafeManagePage />} />}
           {isAdmin && <Route path="/worker-logs" element={<WorkerLogsPage />} />}
           {isAdmin && <Route path="/rank-check" element={<RankCheckPage />} />}
+          {isAdmin && <Route path="/crank-check" element={<CRankCheckPage />} />}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>
