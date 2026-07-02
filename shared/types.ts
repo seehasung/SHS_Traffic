@@ -5,8 +5,8 @@ export type WorkType = 'pc' | 'mobile';
 export type LogicType = 'clean' | 'detail' | 'hidden';
 export type YN = 'Y' | 'N';
 export type PageType = 'pc' | 'mobile' | 'random';
-/** 키워드 동작 모드: 쇼핑 상위노출 vs 블로그/사이트 상위노출. */
-export type KnowledgeMode = 'shopping' | 'blog';
+/** 키워드 동작 모드: 쇼핑 상위노출 vs 블로그/사이트 상위노출 vs C랭크 카페. */
+export type KnowledgeMode = 'shopping' | 'blog' | 'crank';
 /** 설정 모드 (쇼핑/블로그/C랭크). */
 export type SettingsMode = 'shopping' | 'blog' | 'crank';
 

@@ -335,6 +335,7 @@ export default function WorkersPage() {
                 <Select value={addForm.mode} onChange={(e) => setAddForm({ ...addForm, mode: e.target.value as KnowledgeMode })}>
                   <option value="shopping">상품 (쇼핑 상위노출)</option>
                   <option value="blog">사이트 (블로그/사이트 상위노출)</option>
+                  <option value="crank">C랭크 (카페 상위노출)</option>
                 </Select>
               </FormControl>
               <FormControl isRequired>
@@ -371,6 +372,7 @@ export default function WorkersPage() {
                 <Select value={editForm.mode} onChange={(e) => setEditForm({ ...editForm, mode: e.target.value as KnowledgeMode })}>
                   <option value="shopping">상품 (쇼핑 상위노출)</option>
                   <option value="blog">사이트 (블로그/사이트 상위노출)</option>
+                  <option value="crank">C랭크 (카페 상위노출)</option>
                 </Select>
               </FormControl>
               <FormControl>
