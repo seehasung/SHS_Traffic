@@ -551,7 +551,7 @@ export const rankChecksRepo = {
 
 /* ─── 카페 관리 (CafeEntry) ─── */
 function rowToCafeEntry(row: any): CafeEntry {
-  return { id: row.id, cafeName: row.cafe_name, postTitle: row.post_title, targetKeyword: row.target_keyword, createdAt: row.created_at };
+  return { id: row.id, cafeName: row.cafe_name, createdAt: row.created_at };
 }
 
 export const cafeEntriesRepo = {
@@ -562,24 +562,21 @@ export const cafeEntriesRepo = {
     const row = db().prepare(`SELECT * FROM cafe_entries WHERE id = ?`).get(id);
     return row ? rowToCafeEntry(row) : undefined;
   },
-  create(input: Omit<CafeEntry, 'id' | 'createdAt'>): CafeEntry {
+  findByCafeName(cafeName: string): CafeEntry | undefined {
+    const row = db().prepare(`SELECT * FROM cafe_entries WHERE cafe_name = ?`).get(cafeName);
+    return row ? rowToCafeEntry(row) : undefined;
+  },
+  create(input: { cafeName: string }): CafeEntry {
     const id = uid(16);
     const now = Date.now();
     db().prepare(`INSERT INTO cafe_entries(id, cafe_name, post_title, target_keyword, created_at) VALUES(?,?,?,?,?)`)
-      .run(id, input.cafeName, input.postTitle, input.targetKeyword, now);
+      .run(id, input.cafeName, '', '', now);
     return rowToCafeEntry(db().prepare(`SELECT * FROM cafe_entries WHERE id = ?`).get(id));
   },
-  bulkCreate(items: Omit<CafeEntry, 'id' | 'createdAt'>[]): number {
-    const stmt = db().prepare(`INSERT INTO cafe_entries(id, cafe_name, post_title, target_keyword, created_at) VALUES(?,?,?,?,?)`);
-    const tx = db().transaction(() => {
-      let count = 0;
-      for (const item of items) {
-        stmt.run(uid(16), item.cafeName, item.postTitle, item.targetKeyword, Date.now());
-        count++;
-      }
-      return count;
-    });
-    return tx();
+  ensureCafe(cafeName: string): CafeEntry {
+    const existing = this.findByCafeName(cafeName);
+    if (existing) return existing;
+    return this.create({ cafeName });
   },
   delete(id: string) {
     db().prepare(`DELETE FROM cafe_entries WHERE id = ?`).run(id);

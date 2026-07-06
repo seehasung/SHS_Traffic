@@ -27,7 +27,8 @@ import {
   useDisclosure,
   Badge,
 } from '@chakra-ui/react';
-import { FiTrash2, FiPlus } from 'react-icons/fi';
+import { FiTrash2, FiPlus, FiUpload, FiDownload } from 'react-icons/fi';
+import * as XLSX from 'xlsx';
 import type { CRankGroup, CRankKnowledge, CafeEntry } from '@shared/types';
 import { api } from '@/api';
 
@@ -36,13 +37,11 @@ function SearchableDropdown({
   items,
   value,
   onChange,
-  renderItem,
 }: {
   placeholder: string;
   items: string[];
   value: string;
   onChange: (v: string) => void;
-  renderItem?: (item: string, query: string) => React.ReactNode;
 }) {
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
@@ -94,7 +93,7 @@ function SearchableDropdown({
                 setOpen(false);
               }}
             >
-              <Text fontSize="sm">{renderItem ? renderItem(item, query) : highlight(item, query)}</Text>
+              <Text fontSize="sm">{highlight(item, query)}</Text>
             </Box>
           ))}
         </Box>
@@ -111,10 +110,12 @@ export default function CRankPage() {
   const [cafeEntries, setCafeEntries] = useState<CafeEntry[]>([]);
   const [newGroupName, setNewGroupName] = useState('');
 
-  // 연쇄 드롭박스
   const [selCafe, setSelCafe] = useState('');
   const [selKeyword, setSelKeyword] = useState('');
   const [selTitle, setSelTitle] = useState('');
+
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'group' | 'knowledge'; id: string; label: string } | null>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -146,16 +147,6 @@ export default function CRankPage() {
   useEffect(() => { refreshKnowledges(); }, [refreshKnowledges]);
 
   const cafeNames = useMemo(() => [...new Set(cafeEntries.map((e) => e.cafeName))].sort(), [cafeEntries]);
-
-  const keywordsForCafe = useMemo(() => {
-    if (!selCafe) return [];
-    return [...new Set(cafeEntries.filter((e) => e.cafeName === selCafe).map((e) => e.targetKeyword))].sort();
-  }, [cafeEntries, selCafe]);
-
-  const titlesForKeyword = useMemo(() => {
-    if (!selCafe || !selKeyword) return [];
-    return [...new Set(cafeEntries.filter((e) => e.cafeName === selCafe && e.targetKeyword === selKeyword).map((e) => e.postTitle))].sort();
-  }, [cafeEntries, selCafe, selKeyword]);
 
   const countByGroup = useMemo(() => {
     const m = new Map<string, number>();
@@ -213,7 +204,7 @@ export default function CRankPage() {
   const addKnowledge = async () => {
     if (!selectedGroupName) { toast({ title: '먼저 그룹을 선택해주세요', status: 'warning', position: 'top' }); return; }
     if (!selCafe || !selKeyword || !selTitle) {
-      toast({ title: '카페명, 타겟 키워드, 글 제목을 모두 선택해주세요', status: 'warning', position: 'top' }); return;
+      toast({ title: '카페명, 타겟 키워드, 글 제목을 모두 입력해주세요', status: 'warning', position: 'top' }); return;
     }
     try {
       await api.crankKnowledges.create({ keyword: selKeyword, cafeName: selCafe, postTitle: selTitle, groupName: selectedGroupName });
@@ -225,9 +216,70 @@ export default function CRankPage() {
     }
   };
 
+  const downloadTemplate = () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['그룹명', '카페명', '타겟 키워드', '글 제목'],
+      ['그룹1', '예시카페', '타겟키워드', '예시 게시글 제목'],
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'C랭크');
+    XLSX.writeFile(wb, 'C랭크_업로드_템플릿.xlsx');
+  };
+
+  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][];
+
+      const bulkItems: { groupName: string; cafeName: string; keyword: string; postTitle: string }[] = [];
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || !row[0]) continue;
+        const groupName = String(row[0]).trim();
+        const cafeName = String(row[1] ?? '').trim();
+        const keyword = String(row[2] ?? '').trim();
+        const postTitle = String(row[3] ?? '').trim();
+        if (groupName && cafeName && keyword && postTitle) {
+          bulkItems.push({ groupName, cafeName, keyword, postTitle });
+        }
+      }
+
+      if (bulkItems.length === 0) {
+        toast({ title: '유효한 데이터가 없습니다. A열: 그룹명, B열: 카페명, C열: 타겟 키워드, D열: 글 제목 (1행은 머릿말)', status: 'warning', position: 'top' });
+        return;
+      }
+
+      const result = await api.crankKnowledges.bulk(bulkItems);
+      await Promise.all([refreshGroups(), refreshKnowledges(), refreshCafes()]);
+      toast({ title: `${result.created}개 항목이 등록되었습니다`, status: 'success', position: 'top' });
+    } catch (err: any) {
+      toast({ title: err?.message ?? '업로드 실패', status: 'error', position: 'top' });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   return (
     <Stack spacing={5}>
-      <Heading size="md">C랭크</Heading>
+      <Flex justify="space-between" align="center">
+        <Heading size="md">C랭크</Heading>
+        <HStack>
+          <Button size="sm" leftIcon={<FiDownload />} variant="outline" onClick={downloadTemplate}>
+            템플릿 다운로드
+          </Button>
+          <Button size="sm" leftIcon={<FiUpload />} colorScheme="green" isLoading={uploading} onClick={() => fileInputRef.current?.click()}>
+            엑셀 일괄 업로드
+          </Button>
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleExcelUpload} />
+        </HStack>
+      </Flex>
+
       <Flex gap={4} align="stretch" minH="500px">
         {/* 왼쪽: 그룹 패널 */}
         <Box w="260px" flexShrink={0} borderWidth="1px" borderRadius="lg" p={3}>
@@ -267,15 +319,15 @@ export default function CRankPage() {
                 <Text fontSize="sm" color="gray.500">{items.length}개 항목</Text>
               </Flex>
 
-              {/* 연쇄 드롭박스 */}
+              {/* 키워드 추가 영역 */}
               <Box mb={4} p={3} bg="gray.50" borderRadius="md">
                 <HStack spacing={2} mb={2}>
-                  <SearchableDropdown placeholder="카페명 선택" items={cafeNames} value={selCafe} onChange={(v) => { setSelCafe(v); setSelKeyword(''); setSelTitle(''); }} />
-                  <SearchableDropdown placeholder="타겟 키워드 선택" items={keywordsForCafe} value={selKeyword} onChange={(v) => { setSelKeyword(v); setSelTitle(''); }} />
-                  <SearchableDropdown placeholder="글 제목 선택" items={titlesForKeyword} value={selTitle} onChange={(v) => setSelTitle(v)} />
+                  <SearchableDropdown placeholder="카페명 선택" items={cafeNames} value={selCafe} onChange={(v) => setSelCafe(v)} />
+                  <Input size="sm" placeholder="타겟 키워드 입력" value={selKeyword} onChange={(e) => setSelKeyword(e.target.value)} flex={1} />
+                  <Input size="sm" placeholder="글 제목 입력" value={selTitle} onChange={(e) => setSelTitle(e.target.value)} flex={1} />
                   <Button size="sm" colorScheme="blue" onClick={addKnowledge} flexShrink={0} isDisabled={!selCafe || !selKeyword || !selTitle}>추가</Button>
                 </HStack>
-                <Text fontSize="xs" color="gray.500">카페 관리에서 등록한 카페/키워드/제목이 연쇄 드롭다운으로 나타납니다.</Text>
+                <Text fontSize="xs" color="gray.500">카페 관리에서 등록한 카페를 선택하고, 타겟 키워드와 글 제목을 직접 입력합니다.</Text>
               </Box>
 
               {items.some((k) => !k.isActive) && (

@@ -236,8 +236,6 @@ export type WorkerMessage =
 export interface CafeEntry {
   id: string;
   cafeName: string;
-  postTitle: string;
-  targetKeyword: string;
   createdAt: number;
 }
 

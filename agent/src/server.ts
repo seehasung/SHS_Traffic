@@ -501,16 +501,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   // ──────────────── cafe entries (카페 관리) ────────────────
   app.get(API.cafeEntries, (_req, res) => res.json({ items: cafeEntriesRepo.findAll() }));
   app.post(API.cafeEntries, requireAdmin, (req, res) => {
-    const { cafeName, postTitle, targetKeyword } = req.body;
-    if (!cafeName || !postTitle || !targetKeyword) return res.status(400).json({ error: 'INVALID_INPUT' });
-    res.json({ item: cafeEntriesRepo.create({ cafeName, postTitle, targetKeyword }) });
-  });
-  app.post(`${API.cafeEntries}/bulk`, requireAdmin, (req, res) => {
-    const { items } = req.body;
-    if (!Array.isArray(items)) return res.status(400).json({ error: 'INVALID_INPUT' });
-    const valid = items.filter((i: any) => i.cafeName && i.postTitle && i.targetKeyword);
-    const count = cafeEntriesRepo.bulkCreate(valid);
-    res.json({ ok: true, created: count });
+    const { cafeName } = req.body;
+    if (!cafeName) return res.status(400).json({ error: 'INVALID_INPUT' });
+    res.json({ item: cafeEntriesRepo.create({ cafeName }) });
   });
   app.delete('/api/cafe-entries/:id', requireAdmin, (req, res) => {
     cafeEntriesRepo.delete(req.params.id);
@@ -555,6 +548,28 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     crankKnowledgesRepo.setGroupActive(groupName, !!isActive);
     broadcastConfigToAllWorkers();
     res.json({ ok: true });
+  });
+  app.post(`${API.crankKnowledges}/bulk`, requireAdmin, (req, res) => {
+    const { items } = req.body;
+    if (!Array.isArray(items)) return res.status(400).json({ error: 'INVALID_INPUT' });
+    let created = 0;
+    for (const item of items) {
+      const groupName = String(item.groupName ?? '').trim();
+      const cafeName = String(item.cafeName ?? '').trim();
+      const keyword = String(item.keyword ?? '').trim();
+      const postTitle = String(item.postTitle ?? '').trim();
+      if (!groupName || !cafeName || !keyword || !postTitle) continue;
+      // 그룹 자동 생성
+      if (!crankGroupsRepo.findAll().some((g) => g.groupName === groupName)) {
+        crankGroupsRepo.create(groupName);
+      }
+      // 카페 자동 생성
+      cafeEntriesRepo.ensureCafe(cafeName);
+      crankKnowledgesRepo.create({ keyword, cafeName, postTitle, groupName });
+      created++;
+    }
+    broadcastConfigToAllWorkers();
+    res.json({ ok: true, created });
   });
   app.delete('/api/crank-knowledges/:id', requireAdmin, (req, res) => {
     crankKnowledgesRepo.delete(req.params.id);

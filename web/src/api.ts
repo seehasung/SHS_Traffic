@@ -168,10 +168,8 @@ export const api = {
   // ─── C랭크 (카페) ───
   cafeEntries: {
     list: () => call<{ items: import('@shared/types').CafeEntry[] }>('GET', API.cafeEntries).then((r) => r.items),
-    create: (data: { cafeName: string; postTitle: string; targetKeyword: string }) =>
+    create: (data: { cafeName: string }) =>
       call<{ item: import('@shared/types').CafeEntry }>('POST', API.cafeEntries, data).then((r) => r.item),
-    bulk: (items: { cafeName: string; postTitle: string; targetKeyword: string }[]) =>
-      call<{ ok: true; created: number }>('POST', `${API.cafeEntries}/bulk`, { items }),
     remove: (id: string) => call<{ ok: true }>('DELETE', API.cafeEntry(id)),
   },
   crankGroups: {
@@ -191,6 +189,8 @@ export const api = {
       call<{ ok: true }>('PATCH', `/api/crank-knowledges/${encodeURIComponent(id)}/active`, { isActive }),
     setGroupActive: (groupName: string, isActive: boolean) =>
       call<{ ok: true }>('PATCH', '/api/crank-knowledges/group-active', { groupName, isActive }),
+    bulk: (items: { groupName: string; cafeName: string; keyword: string; postTitle: string }[]) =>
+      call<{ ok: true; created: number }>('POST', `${API.crankKnowledges}/bulk`, { items }),
     remove: (id: string) => call<{ ok: true }>('DELETE', API.crankKnowledge(id)),
   },
   crankChecks: {
