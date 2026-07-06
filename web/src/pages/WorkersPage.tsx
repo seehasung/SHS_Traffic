@@ -91,14 +91,14 @@ export default function WorkersPage() {
       } else if (w.mode === 'crank') {
         let keywordCount = 0;
         for (const k of crankKnowledges) {
-          if (k.groupName && w.assignedGroupNames.includes(k.groupName)) keywordCount++;
+          if (k.isActive && k.groupName && w.assignedGroupNames.includes(k.groupName)) keywordCount++;
         }
         result.set(w.id, { groupCount: w.assignedGroupNames.length, productCount: 0, keywordCount });
       } else {
         const productIds = new Set<string>();
         let keywordCount = 0;
         for (const k of allKnowledges) {
-          if (k.groupName && w.assignedGroupNames.includes(k.groupName)) {
+          if ((k as any).isActive !== false && k.groupName && w.assignedGroupNames.includes(k.groupName)) {
             productIds.add(k.itemName);
             keywordCount++;
           }

@@ -1,6 +1,7 @@
-import { Box, Container, HStack, Heading, Spacer, Text, Button, Tag } from '@chakra-ui/react';
-import { Link as RouterLink, useLocation } from 'react-router-dom';
+import { Box, Container, HStack, Heading, Spacer, Text, Button, Tag, Menu, MenuButton, MenuList, MenuItem } from '@chakra-ui/react';
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import type { PropsWithChildren } from 'react';
+import { FiChevronDown } from 'react-icons/fi';
 import { api } from '@/api';
 
 interface Props extends PropsWithChildren {
@@ -13,6 +14,8 @@ interface Props extends PropsWithChildren {
 
 export default function Layout({ children, email, connected, status, isAdmin, onSignedOut }: Props) {
   const location = useLocation();
+  const navigate = useNavigate();
+
   const tab = (path: string, label: string) => (
     <Button
       as={RouterLink}
@@ -23,6 +26,34 @@ export default function Layout({ children, email, connected, status, isAdmin, on
       {label}
     </Button>
   );
+
+  const dropdownMenu = (label: string, items: { path: string; label: string }[]) => {
+    const isActive = items.some((item) => location.pathname === item.path);
+    return (
+      <Menu>
+        <MenuButton
+          as={Button}
+          size="sm"
+          variant={isActive ? 'solid' : 'ghost'}
+          rightIcon={<FiChevronDown />}
+        >
+          {label}
+        </MenuButton>
+        <MenuList minW="140px" zIndex={20}>
+          {items.map((item) => (
+            <MenuItem
+              key={item.path}
+              onClick={() => navigate(item.path)}
+              fontWeight={location.pathname === item.path ? 'bold' : 'normal'}
+              bg={location.pathname === item.path ? 'blue.50' : undefined}
+            >
+              {item.label}
+            </MenuItem>
+          ))}
+        </MenuList>
+      </Menu>
+    );
+  };
 
   const statusTag = (() => {
     if (!connected) return <Tag colorScheme="gray">연결 끊김</Tag>;
@@ -45,15 +76,21 @@ export default function Layout({ children, email, connected, status, isAdmin, on
             <Box mx={4}>
               <HStack spacing={1}>
                 {tab('/', isAdmin ? '워커 관리' : '대시보드')}
-                {tab('/knowledges', '키워드/상품')}
-                {tab('/crank', 'C랭크')}
-                {isAdmin && tab('/products', '상품 관리')}
-                {isAdmin && tab('/cafe-manage', '카페 관리')}
+                {dropdownMenu('C랭크', [
+                  { path: '/crank', label: 'C랭크' },
+                  { path: '/cafe-manage', label: '카페 관리' },
+                ])}
+                {dropdownMenu('상품', [
+                  { path: '/knowledges', label: '키워드/상품' },
+                  { path: '/products', label: '상품 관리' },
+                ])}
                 {tab('/naver-accounts', '네이버 계정')}
                 {tab('/settings', '작업 설정')}
-                {isAdmin && tab('/worker-logs', '실시간 로그')}
-                {isAdmin && tab('/rank-check', '순위 추적')}
-                {isAdmin && tab('/crank-check', 'C랭크 순위')}
+                {isAdmin && dropdownMenu('순위추적', [
+                  { path: '/rank-check', label: '상품 순위' },
+                  { path: '/crank-check', label: 'C랭크 순위' },
+                ])}
+                {isAdmin && tab('/worker-logs', '로그')}
               </HStack>
             </Box>
             <Spacer />
