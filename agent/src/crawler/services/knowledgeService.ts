@@ -511,17 +511,15 @@ class KnowledgeService {
             continue;
           }
 
-          if (isFoundTarget && !purchaseName) {
-            const itemRank = await this.extractProductRankByElementHandle(itemLinkElement);
-            crawlerUtil.log(`[플러스 스토어에서 타겟상품을 찾았습니다.] ${itemRank}번째 상품입니다.`);
-            await crawlerUtil.waitRandom(plusStorePage, 10, 13);
-            purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: plusStorePage, linkElement: itemLinkElement });
-            await purchaseDetailPage?.bringToFront();
-            await crawlerUtil.waitTillHTMLRendered(purchaseDetailPage!);
+          const itemRank = await this.extractProductRankByElementHandle(itemLinkElement);
+          crawlerUtil.log(`[플러스 스토어에서 타겟상품을 찾았습니다.] ${itemRank}번째 상품입니다.`);
+          await crawlerUtil.waitRandom(plusStorePage, 10, 13);
+          purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: plusStorePage, linkElement: itemLinkElement });
+          await purchaseDetailPage?.bringToFront();
+          await crawlerUtil.waitTillHTMLRendered(purchaseDetailPage!);
 
-            purchaseDetailPage = await this._handleServiceUnavailable(browser, page, plusStorePage, itemLinkElement);
-            return { shoppingResultPage, purchaseDetailPage };
-          }
+          purchaseDetailPage = await this._handleServiceUnavailable(browser, page, plusStorePage, itemLinkElement);
+          return { shoppingResultPage, purchaseDetailPage };
         }
         return { shoppingResultPage };
       }
