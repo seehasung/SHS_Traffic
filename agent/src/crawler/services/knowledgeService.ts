@@ -395,7 +395,6 @@ class KnowledgeService {
     const isPlus = setting.storeType === 'plus';
     const isSpecial = setting.storeType === 'special';
     let searchKeyword = isSpecial ? '네이버 가격비교' : keyword;
-    searchKeyword = isPlus ? '네이버 플러스스토어' : searchKeyword;
 
     try {
       await crawlerUtil.goto(page, url);
@@ -409,7 +408,7 @@ class KnowledgeService {
     let shoppingTabSelector = isPc
       ? 'a[role=tab][href*="search.shopping.naver.com/search"]'
       : 'a[role=tab][href*="msearch.shopping.naver.com/search"]';
-    if (isSpecial || isPlus) {
+    if (isSpecial) {
       shoppingTabSelector = '.sds-comps-text';
     }
 
@@ -466,45 +465,68 @@ class KnowledgeService {
     let totalShoppingDetailPage: Page | undefined;
 
     // ============================================================
-    // 플러스스토어 전용 흐름: 무한 스크롤 + 전용 셀렉터
+    // 플러스스토어 전용 흐름: 쇼핑 결과에서 N+스토어 버튼 클릭 → 무한 스크롤
     // ============================================================
     if (isPlus) {
-      await crawlerUtil.log('플러스스토어 검색으로 진입합니다.');
-      try {
-        await this._searchResultKeyword(shoppingResultPage!, keyword);
-        await crawlerUtil.waitTillHTMLRendered(shoppingResultPage!);
-      } catch (e) {
-        console.error(e);
-      }
-      await crawlerUtil.waitTillHTMLRendered(shoppingResultPage!);
+      await crawlerUtil.log('플러스스토어 검색으로 진입합니다. N+스토어 검색에서 더보기 버튼을 찾습니다.');
 
-      for (let i = 0; i < 100; i++) {
-        await crawlerUtil.autoScroll(shoppingResultPage!, '', 200, 200, 3000).catch(console.error);
+      // N+스토어 "검색에서 더보기" 버튼 찾기
+      const plusStoreSelectors = [
+        'a[class*="_gnbContent_link_search"]',
+        'a[href*="search.shopping.naver.com/ns/search"]',
+        'a[href*="msearch.shopping.naver.com/ns/search"]',
+      ];
 
-        const itemsSelector = '*[class*=basicProductCard_basic_product_card]';
-        const items = await shoppingResultPage!.$$(itemsSelector);
-        const findResult = await this.findTargetInProductList(items, isMobile, itemName, setting?.isIncludeAds === 'Y', isPlus);
-        const { itemLinkElement, itemElement } = findResult;
-        const isFoundTarget = !isEmpty(itemElement);
-
-        if (!isFoundTarget) {
-          crawlerUtil.log('플러스 스토어에서 상품을 찾지 못하여 계속 스크롤하겠습니다.');
-          continue;
-        }
-
-        if (isFoundTarget && !purchaseName) {
-          const itemRank = await this.extractProductRankByElementHandle(itemLinkElement);
-          crawlerUtil.log(`[플러스 스토어에서 타겟상품을 찾았습니다.] ${itemRank}번째 상품입니다.`);
-          await crawlerUtil.waitRandom(shoppingResultPage!, 10, 13);
-          purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage!, linkElement: itemLinkElement });
-          await purchaseDetailPage?.bringToFront();
-          await crawlerUtil.waitTillHTMLRendered(purchaseDetailPage!);
-
-          purchaseDetailPage = await this._handleServiceUnavailable(browser, page, shoppingResultPage!, itemLinkElement);
-          return { shoppingResultPage, purchaseDetailPage };
+      let plusStoreLink: ElementHandle<Element> | null = null;
+      for (const sel of plusStoreSelectors) {
+        plusStoreLink = await shoppingResultPage!.$(sel);
+        if (plusStoreLink) {
+          crawlerUtil.log(`N+스토어 버튼 발견 (셀렉터: ${sel})`);
+          break;
         }
       }
-      return { shoppingResultPage };
+
+      if (!plusStoreLink) {
+        crawlerUtil.log('N+스토어 검색에서 더보기 버튼을 찾지 못했습니다. 일반 검색으로 진행합니다.');
+      } else {
+        // N+스토어 페이지로 이동
+        let plusStorePage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage!, linkElement: plusStoreLink });
+        if (!plusStorePage) {
+          await plusStoreLink.click();
+          await crawlerUtil.waitTillHTMLRendered(shoppingResultPage!);
+          plusStorePage = shoppingResultPage!;
+        }
+        await crawlerUtil.waitTillHTMLRendered(plusStorePage);
+        await crawlerUtil.log('N+스토어 검색 결과 페이지 URL: ' + plusStorePage.url());
+
+        for (let i = 0; i < 100; i++) {
+          await crawlerUtil.autoScroll(plusStorePage, '', 200, 200, 3000).catch(console.error);
+
+          const itemsSelector = '*[class*=basicProductCard_basic_product_card]';
+          const items = await plusStorePage.$$(itemsSelector);
+          const findResult = await this.findTargetInProductList(items, isMobile, itemName, setting?.isIncludeAds === 'Y', isPlus);
+          const { itemLinkElement, itemElement } = findResult;
+          const isFoundTarget = !isEmpty(itemElement);
+
+          if (!isFoundTarget) {
+            crawlerUtil.log('플러스 스토어에서 상품을 찾지 못하여 계속 스크롤하겠습니다.');
+            continue;
+          }
+
+          if (isFoundTarget && !purchaseName) {
+            const itemRank = await this.extractProductRankByElementHandle(itemLinkElement);
+            crawlerUtil.log(`[플러스 스토어에서 타겟상품을 찾았습니다.] ${itemRank}번째 상품입니다.`);
+            await crawlerUtil.waitRandom(plusStorePage, 10, 13);
+            purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: plusStorePage, linkElement: itemLinkElement });
+            await purchaseDetailPage?.bringToFront();
+            await crawlerUtil.waitTillHTMLRendered(purchaseDetailPage!);
+
+            purchaseDetailPage = await this._handleServiceUnavailable(browser, page, plusStorePage, itemLinkElement);
+            return { shoppingResultPage, purchaseDetailPage };
+          }
+        }
+        return { shoppingResultPage };
+      }
     }
 
     // ============================================================
