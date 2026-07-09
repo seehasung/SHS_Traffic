@@ -76,6 +76,8 @@ export interface Settings {
   shoppingRandomSearch?: YN;
   vpnType?: 'hi' | 'cool' | 'momo';
   maxPages?: number;
+  /** +스토어: 최대 스크롤 횟수 (기본 20) */
+  plusMaxScroll?: number;
   /** C랭크: 최대 검색 순위 (기본 100) */
   maxCafeRank?: number;
   /** C랭크: 카페 내 게시판 진입 수 (기본 3) */

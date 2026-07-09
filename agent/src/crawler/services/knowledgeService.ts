@@ -499,7 +499,9 @@ class KnowledgeService {
         await crawlerUtil.waitTillHTMLRendered(plusStorePage);
         await crawlerUtil.log('N+스토어 검색 결과 페이지 URL: ' + plusStorePage.url());
 
-        for (let i = 0; i < 100; i++) {
+        const plusMaxScroll = Number(setting.plusMaxScroll) || 20;
+        crawlerUtil.log(`N+스토어에서 최대 ${plusMaxScroll}회 스크롤하여 상품을 찾겠습니다.`);
+        for (let i = 0; i < plusMaxScroll; i++) {
           await crawlerUtil.autoScroll(plusStorePage, '', 200, 200, 3000).catch(console.error);
 
           const itemsSelector = '*[class*=basicProductCard_basic_product_card]';

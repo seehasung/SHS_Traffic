@@ -311,13 +311,21 @@ function SettingsForm({ mode }: { mode: SettingsMode }) {
 
           {/* ── 최대 검색 페이지 (쇼핑) ── */}
           {mode === 'shopping' && (
-            <Section title="최대 검색 페이지">
+            <Section title="검색 설정">
               <Field label="상품 검색 시 최대 페이지 수">
                 <HStack>
                   <NumberInput size="sm" w="100px" value={s.maxPages ?? 200} min={1} max={500} onChange={(_, v) => set('maxPages', v || 200)}>
                     <NumberInputField />
                   </NumberInput>
                   <Text fontSize="sm" color="gray.500">페이지</Text>
+                </HStack>
+              </Field>
+              <Field label="+스토어 최대 스크롤 횟수">
+                <HStack>
+                  <NumberInput size="sm" w="100px" value={s.plusMaxScroll ?? 20} min={1} max={200} onChange={(_, v) => set('plusMaxScroll', v || 20)}>
+                    <NumberInputField />
+                  </NumberInput>
+                  <Text fontSize="sm" color="gray.500">회</Text>
                 </HStack>
               </Field>
             </Section>
