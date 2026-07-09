@@ -63,6 +63,9 @@ class ImitateService {
         }
 
         await crawlerUtil.waitRandom(page, minWaitTime, maxWaitTime);
+        await crawlerUtil.wait(page, 1);
+        await crawlerUtil.autoScroll(page);
+        await crawlerUtil.waitRandom(page, 1, 2);
         if (isGoBack) await crawlerUtil.goBack(page);
       }
     } catch (e) {
