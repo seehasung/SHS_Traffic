@@ -489,14 +489,10 @@ class KnowledgeService {
       if (!plusStoreLink) {
         crawlerUtil.log('N+스토어 검색에서 더보기 버튼을 찾지 못했습니다. 일반 검색으로 진행합니다.');
       } else {
-        // N+스토어 페이지로 이동
-        let plusStorePage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage!, linkElement: plusStoreLink });
-        if (!plusStorePage) {
-          await plusStoreLink.click();
-          await crawlerUtil.waitTillHTMLRendered(shoppingResultPage!);
-          plusStorePage = shoppingResultPage!;
-        }
-        await crawlerUtil.waitTillHTMLRendered(plusStorePage);
+        // N+스토어 링크 클릭 → 같은 탭에서 이동
+        await crawlerUtil.clickByElemHandle(shoppingResultPage!, plusStoreLink);
+        await crawlerUtil.waitTillHTMLRendered(shoppingResultPage!);
+        const plusStorePage = shoppingResultPage!;
         await crawlerUtil.log('N+스토어 검색 결과 페이지 URL: ' + plusStorePage.url());
 
         const plusMaxScroll = Number(setting.plusMaxScroll) || 20;
