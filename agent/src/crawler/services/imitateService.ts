@@ -49,11 +49,11 @@ class ImitateService {
           await this._removeLayer({ page });
           const fakeSearchInput = await page.$('#MM_SEARCH_FAKE');
           if (fakeSearchInput) await fakeSearchInput.click();
-          await page.waitForSelector('header #query', { visible: true });
+          await page.waitForSelector('header #query', { visible: true }).catch(() => {});
           await page.type('header #query', randomWord, { delay: 100 });
-          await page.waitForSelector('.sch_btn_search');
-          const searchBtn = await page.$('.sch_btn_search');
-          await crawlerUtil.clickByElemHandle(page, searchBtn);
+          await crawlerUtil.delay(500);
+          await page.keyboard.press('Enter');
+          await crawlerUtil.waitTillHTMLRendered(page);
         } else {
           await page.waitForSelector('#query');
           await page.type('#query', randomWord, { delay: 100 });

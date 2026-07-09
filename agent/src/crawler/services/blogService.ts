@@ -19,11 +19,12 @@ class BlogService {
     if (isMobile) {
       await this._removeLayer({ page });
       const fakeInput = await page.$('#MM_SEARCH_FAKE');
-      fakeInput?.click();
+      if (fakeInput) await fakeInput.click();
       await page.waitForSelector('header #query', { visible: true }).catch(() => {});
       await page.type('header #query', keyword, { delay: 100 });
-      const searchBtn = await page.$('.sch_btn_search');
-      await crawlerUtil.clickByElemHandle(page, searchBtn);
+      await crawlerUtil.delay(500);
+      await page.keyboard.press('Enter');
+      await crawlerUtil.waitTillHTMLRendered(page);
     } else {
       await page.type('input[name="query"]', keyword, { delay: 100 });
       const searchBtn = await page.$('#search-btn');
