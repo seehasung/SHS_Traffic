@@ -88,3 +88,14 @@ jobs:
         run: |
           chcp 65001
           npx electron-builder --win --config.win.signAndEditExecutable=false --publish always
+
+      - name: Publish release (remove draft)
+        if: steps.check.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.ver.outputs.tag }}"
+          Write-Host "Publishing release $tag ..."
+          gh release edit $tag --draft=false --latest
+          Write-Host "Release $tag published successfully"
