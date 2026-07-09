@@ -31,6 +31,30 @@ class KnowledgeService {
     }
   }
 
+  private async _searchResultKeyword(page: Page, keyword: string) {
+    crawlerUtil.log(`"${keyword}" 검색`);
+    const searchInput = await page.$('[class*="searchInput_has_keyword"] input,#input_text');
+    await crawlerUtil.clickByElemHandle(page, searchInput);
+    await crawlerUtil.waitRandom(page, 1, 2);
+    await crawlerUtil.clickByElemHandle(page, searchInput);
+    await page.type('[class*="searchInput_has_keyword"] input,#input_text', keyword, { delay: 100 });
+    await page.keyboard.press('Enter');
+    await crawlerUtil.waitRandom(page, 1, 2);
+    await crawlerUtil.clickByElemHandle(page, searchInput);
+  }
+
+  async extractProductRankByElementHandle(elementHandle: ElementHandle<Element> | null): Promise<string> {
+    if (!elementHandle) return '';
+    return await elementHandle.evaluate((el: any) => {
+      const dataRank = el.getAttribute('data-shp-contents-rank');
+      if (dataRank) {
+        const matches = dataRank.match(/\d+/g);
+        if (matches) return matches[0];
+      }
+      return '';
+    });
+  }
+
   async extractProductIdFromElement(element: ElementHandle<Element> | null): Promise<string> {
     if (!element) return '';
     try {
@@ -250,6 +274,112 @@ class KnowledgeService {
     return null;
   }
 
+  private async _handleServiceUnavailable(
+    browser: Browser, page: Page, shoppingResultPage: Page,
+    itemLinkElement: ElementHandle<Element>,
+  ): Promise<Page | undefined> {
+    let purchaseDetailPage: Page | undefined = page;
+
+    if (!purchaseDetailPage?.url().includes('cr.shopping.naver.')) {
+      await crawlerUtil.log('자사몰 스토어로 이동중입니다. 추가 대기하겠습니다.');
+      await crawlerUtil.waitRandom(purchaseDetailPage!, 3, 5);
+    }
+
+    await crawlerUtil.scrollBy(purchaseDetailPage!, 'normal', 50, 1, 'down');
+
+    const isServiceUnavailable = await purchaseDetailPage?.evaluate(
+      () => document.body.innerText.includes('현재 서비스 접속이 불가합니다')
+    ).catch(() => false);
+
+    if (isServiceUnavailable) {
+      await crawlerUtil.log('서비스 접속이 불가합니다. 페이지 닫기 후 재접속하겠습니다.');
+      await purchaseDetailPage?.close();
+      await shoppingResultPage?.bringToFront();
+      purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage, linkElement: itemLinkElement });
+    }
+
+    const isProductNotExist = await purchaseDetailPage?.evaluate(
+      () => document.body.innerText.includes('상품이 존재하지 않습니다')
+    ).catch(() => false);
+
+    if (isProductNotExist) {
+      await crawlerUtil.log('상품 미존재 메시지가 발생했습니다. 캐시 무시 후 새로고침합니다.');
+      await purchaseDetailPage!.setCacheEnabled(false);
+      await purchaseDetailPage!.reload({ waitUntil: ['networkidle0'] as any });
+      await purchaseDetailPage!.setCacheEnabled(true);
+      await crawlerUtil.waitTillHTMLRendered(purchaseDetailPage!);
+    }
+
+    return purchaseDetailPage;
+  }
+
+  private async _findPurchaseItemByMobile(
+    browser: Browser, shoppingDetailPage: Page, purchaseName: string, setting: any,
+  ): Promise<{ shoppingDetailPage?: Page; purchaseDetailPage?: Page; totalShoppingDetailPage?: Page } | null> {
+    crawlerUtil.log('판매처 찾기를 시작합니다.');
+    await crawlerUtil.autoScroll(shoppingDetailPage, '', 200, 1200);
+    await crawlerUtil.waitRandom(shoppingDetailPage, 4, 8);
+
+    let isExistMoreBtn = false;
+    const moreButtonSelector = 'a[class*=main_link_more__]';
+    try {
+      const moreButton = await shoppingDetailPage.waitForSelector(moreButtonSelector, { timeout: 3000 });
+      isExistMoreBtn = !isEmpty(moreButton);
+    } catch {
+      isExistMoreBtn = false;
+    }
+
+    if (!isExistMoreBtn) {
+      crawlerUtil.log('더보기 버튼이 없는 CASE');
+      const linkSelector = '*[class*=productPerMall_link_seller__]';
+      await shoppingDetailPage.waitForSelector(linkSelector).catch(() => {});
+      const productNumbers = await this.extractProductNumbersBySelector(shoppingDetailPage, linkSelector);
+      const linkIndex = productNumbers?.findIndex(x => x == purchaseName);
+      const linkElemHandles = await shoppingDetailPage.$$(linkSelector);
+
+      if (linkIndex === -1) {
+        crawlerUtil.log(`총 상품 ${linkElemHandles.length}개 중 판매처 "${purchaseName}"를 찾지 못했습니다.`);
+        return null;
+      }
+
+      const linkElemHandle = linkElemHandles[linkIndex];
+      if (!linkElemHandle) {
+        crawlerUtil.log(`총 상품 ${linkElemHandles.length}개 중 ${linkIndex}번째 항목의 판매처 "${purchaseName}"에 대한 링크를 찾지 못했습니다.`);
+      }
+
+      const purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingDetailPage, linkElement: linkElemHandle });
+      if (!purchaseDetailPage) crawlerUtil.log('판매처 상세 페이지를 얻지 못했습니다.');
+      await purchaseDetailPage?.bringToFront();
+      await crawlerUtil.wait(shoppingDetailPage, 3);
+      return { shoppingDetailPage, purchaseDetailPage };
+    }
+
+    crawlerUtil.log('더보기 버튼이 있는 CASE');
+    const totalShoppingDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingDetailPage, selector: moreButtonSelector, setting });
+    if (!totalShoppingDetailPage) throw new Error('전체 판매처 목록 페이지로 이동하지 못했습니다.');
+    console.log('판매처 전체 목록 페이지로 진입 완료: ' + await totalShoppingDetailPage.url());
+
+    await crawlerUtil.waitRandom(totalShoppingDetailPage, 1, 3);
+    await crawlerUtil.autoScroll(totalShoppingDetailPage, '', 300, 800);
+    await crawlerUtil.waitRandom(totalShoppingDetailPage, 4, 8);
+
+    const linkSelector = 'a[class*=productContent_link_seller__]';
+    const productNumbers = await this.extractProductNumbersBySelector(totalShoppingDetailPage, linkSelector);
+    const linkIndex = productNumbers?.findIndex(x => x == purchaseName);
+    const linkElemHandles = await totalShoppingDetailPage.$$(linkSelector);
+
+    if (linkIndex === -1) {
+      crawlerUtil.log(`총 상품 ${linkElemHandles.length}개 중 판매처 "${purchaseName}"를 찾지 못했습니다.`);
+      return null;
+    }
+
+    const linkElemHandle = linkElemHandles[linkIndex];
+    const purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: totalShoppingDetailPage, linkElement: linkElemHandle });
+    await purchaseDetailPage?.bringToFront();
+    await crawlerUtil.wait(totalShoppingDetailPage, 3);
+    return { totalShoppingDetailPage, purchaseDetailPage };
+  }
+
   async findPages(
     browser: Browser, page: Page, userMe: any, setting: any,
     keyword: string, itemName: string, purchaseName?: string,
@@ -275,49 +405,120 @@ class KnowledgeService {
     }
 
     await crawlerUtil.waitRandom(page, 1, 2);
-    const shoppingTabSelector = isPc
+
+    let shoppingTabSelector = isPc
       ? 'a[role=tab][href*="search.shopping.naver.com/search"]'
       : 'a[role=tab][href*="msearch.shopping.naver.com/search"]';
+    if (isSpecial || isPlus) {
+      shoppingTabSelector = '.sds-comps-text';
+    }
 
     await page.waitForSelector(shoppingTabSelector).catch(() => {});
     const shoppingTabElement = await page.$(shoppingTabSelector);
     if (!shoppingTabElement) throw new Error('쇼핑탭을 찾지 못했습니다.');
 
     let shoppingResultPage = await crawlerUtil.getNewPageByClick({ browser, page, linkElement: shoppingTabElement });
-    if (!shoppingResultPage) return {};
+    if (isEmpty(shoppingResultPage)) return {};
 
-    await crawlerUtil.log('검색 결과 페이지 URL: ' + shoppingResultPage.url());
-    if (!shoppingResultPage.url().includes('msearch')) { isPc = true; isMobile = false; }
-
-    await crawlerUtil.waitTillHTMLRendered(shoppingResultPage);
-    const pageContent = await shoppingResultPage.content();
-
-    if (isPc) {
-      await shoppingResultPage.reload({ waitUntil: 'networkidle2', timeout: 60000 });
-      await crawlerUtil.waitTillHTMLRendered(shoppingResultPage);
+    // 스페셜(가격비교) 전용: 결과 페이지 내에서 실제 키워드로 재검색
+    if (isSpecial) {
+      try {
+        await this._searchResultKeyword(shoppingResultPage!, keyword);
+        await crawlerUtil.waitTillHTMLRendered(shoppingResultPage!);
+      } catch (e) {
+        console.error(e);
+      }
     }
 
-    if (pageContent.includes('검색 결과가 없습니다.')) {
-      await shoppingResultPage.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+    await crawlerUtil.log('검색 결과 페이지 URL: ' + shoppingResultPage!.url());
+    if (!shoppingResultPage!.url().includes('msearch')) { isPc = true; isMobile = false; }
+
+    await crawlerUtil.waitTillHTMLRendered(shoppingResultPage!);
+    const pageContent = await shoppingResultPage!.content();
+
+    if (isPc) {
+      await shoppingResultPage!.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+      await crawlerUtil.log('새로고침하고 계속 진행하겠습니다.');
+      await crawlerUtil.waitTillHTMLRendered(shoppingResultPage!);
+    }
+
+    const isNonSearched = pageContent.includes('검색 결과가 없습니다.');
+    if (isNonSearched) {
+      await crawlerUtil.waitTillHTMLRendered(shoppingResultPage!);
+      await shoppingResultPage!.reload({ waitUntil: 'networkidle2', timeout: 60000 });
       crawlerUtil.log('검색결과 미노출 에러입니다. 새로고침을 1회 더 진행하겠습니다.');
+    }
+
+    // 일시적 제한 처리
+    const isLimit = pageContent.includes('일시적으로 제한');
+    if (isLimit) {
+      await crawlerUtil.waitTillHTMLRendered(shoppingResultPage!);
+      await crawlerUtil.log('페이지 일시적 제한입니다. 대기 후 진행합니다.');
+      await shoppingResultPage!.reload({ waitUntil: 'networkidle2', timeout: 60000 * 5 });
+      await page.bringToFront();
+      await crawlerUtil.autoScroll(page, '', 200, 200, 3000).catch(console.error);
+      shoppingResultPage = await crawlerUtil.getNewPageByClick({ browser, page, linkElement: shoppingTabElement });
+      await crawlerUtil.waitTillHTMLRendered(shoppingResultPage!);
     }
 
     let shoppingDetailPage: Page | undefined;
     let purchaseDetailPage: Page | undefined;
     let totalShoppingDetailPage: Page | undefined;
 
-    const MAX_PAGES = Number(setting.maxPages) || 200;
+    // ============================================================
+    // 플러스스토어 전용 흐름: 무한 스크롤 + 전용 셀렉터
+    // ============================================================
+    if (isPlus) {
+      await crawlerUtil.log('플러스스토어 검색으로 진입합니다.');
+      try {
+        await this._searchResultKeyword(shoppingResultPage!, keyword);
+        await crawlerUtil.waitTillHTMLRendered(shoppingResultPage!);
+      } catch (e) {
+        console.error(e);
+      }
+      await crawlerUtil.waitTillHTMLRendered(shoppingResultPage!);
+
+      for (let i = 0; i < 100; i++) {
+        await crawlerUtil.autoScroll(shoppingResultPage!, '', 200, 200, 3000).catch(console.error);
+
+        const itemsSelector = '*[class*=basicProductCard_basic_product_card]';
+        const items = await shoppingResultPage!.$$(itemsSelector);
+        const findResult = await this.findTargetInProductList(items, isMobile, itemName, setting?.isIncludeAds === 'Y', isPlus);
+        const { itemLinkElement, itemElement } = findResult;
+        const isFoundTarget = !isEmpty(itemElement);
+
+        if (!isFoundTarget) {
+          crawlerUtil.log('플러스 스토어에서 상품을 찾지 못하여 계속 스크롤하겠습니다.');
+          continue;
+        }
+
+        if (isFoundTarget && !purchaseName) {
+          const itemRank = await this.extractProductRankByElementHandle(itemLinkElement);
+          crawlerUtil.log(`[플러스 스토어에서 타겟상품을 찾았습니다.] ${itemRank}번째 상품입니다.`);
+          await crawlerUtil.waitRandom(shoppingResultPage!, 10, 13);
+          purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage!, linkElement: itemLinkElement });
+          await purchaseDetailPage?.bringToFront();
+          await crawlerUtil.waitTillHTMLRendered(purchaseDetailPage!);
+
+          purchaseDetailPage = await this._handleServiceUnavailable(browser, page, shoppingResultPage!, itemLinkElement);
+          return { shoppingResultPage, purchaseDetailPage };
+        }
+      }
+      return { shoppingResultPage };
+    }
+
+    // ============================================================
+    // 일반 흐름 (non-plus): 페이지네이션
+    // ============================================================
+    const MAX_PAGES = Number(setting.maxPages) || 100;
     let pagesScanned = 0;
     let failReason: string | null = null;
+
     for (let i = 0; i < MAX_PAGES; i++) {
       pagesScanned = i + 1;
-      if (i === 0) {
-        await crawlerUtil.waitRandom(shoppingResultPage, 1, 3).catch(console.error);
-      } else {
-        await crawlerUtil.waitRandom(shoppingResultPage, 0, 1).catch(console.error);
-      }
-      await crawlerUtil.autoScroll(shoppingResultPage, '', 200, 200).catch(console.error);
-      await crawlerUtil.waitTillHTMLRendered(shoppingResultPage);
+      await crawlerUtil.waitRandom(shoppingResultPage!, 5, 10).catch(console.error);
+      await crawlerUtil.autoScroll(shoppingResultPage!, '', 200, 200).catch(console.error);
+      await crawlerUtil.waitTillHTMLRendered(shoppingResultPage!);
 
       const pcSelector = '*[class*=basicList_list_basis] > div > div';
       const mobileSelectors = [
@@ -327,19 +528,19 @@ class KnowledgeService {
         '*[class*=productList] > li',
       ];
 
-      let items: ElementHandle<Element>[] = await shoppingResultPage.$$(pcSelector);
+      let items: ElementHandle<Element>[] = await shoppingResultPage!.$$(pcSelector);
       if (items.length === 0 && isMobile) {
         for (const sel of mobileSelectors) {
-          items = await shoppingResultPage.$$(sel);
+          items = await shoppingResultPage!.$$(sel);
           if (items.length > 0) {
             crawlerUtil.log(`[모바일] 셀렉터 "${sel}"로 아이템 발견`);
             break;
           }
         }
         if (items.length === 0) {
-          items = await shoppingResultPage.$$('[data-ap-skuid]');
+          items = await shoppingResultPage!.$$('[data-ap-skuid]');
           if (items.length === 0) {
-            const allItems = await shoppingResultPage.$$('li, div[class*=product]');
+            const allItems = await shoppingResultPage!.$$('li, div[class*=product]');
             const skuItems: ElementHandle<Element>[] = [];
             for (const el of allItems) {
               const hasId = await el.evaluate((e: any) =>
@@ -353,20 +554,15 @@ class KnowledgeService {
       }
 
       crawlerUtil.log(`[${i + 1}/${MAX_PAGES}페이지] 검색 결과 아이템 ${items.length}개 발견, 상품번호 "${itemName}" 검색 중`);
-      const findResult = await this.findTargetInProductList(items, isMobile, itemName, false, isPlus);
+      const findResult = await this.findTargetInProductList(items, isMobile, itemName, setting?.isIncludeAds === 'Y', isPlus);
       const { itemLinkElement, itemElement, itemTotalCount, itemIndex } = findResult;
 
       const isFoundTarget = !isEmpty(itemElement);
 
       if (!isFoundTarget) {
-        if (i >= MAX_PAGES - 1) {
-          crawlerUtil.log(`${MAX_PAGES}페이지까지 상품을 찾지 못했습니다. 다음 상품으로 넘어갑니다.`);
-          failReason = `${MAX_PAGES}페이지까지 상품을 찾지 못함`;
-          break;
-        }
         crawlerUtil.log('상품을 찾지 못해서 다음 페이지로 넘어가겠습니다.');
         try {
-          await this._clickNextPageInShoppingResultPage(shoppingResultPage, setting);
+          await this._clickNextPageInShoppingResultPage(shoppingResultPage!, setting);
         } catch {
           crawlerUtil.log('더 이상 다음 페이지가 없습니다. 다음 상품으로 넘어갑니다.');
           failReason = `${pagesScanned}페이지에서 다음 페이지 없음`;
@@ -377,36 +573,88 @@ class KnowledgeService {
 
       const rankInfo = isFoundTarget ? { pageNumber: i + 1, rankPosition: findResult.rankPosition ?? itemIndex } : undefined;
 
+      // 타겟 찾음 & 판매처 없음
       if (isFoundTarget && !purchaseName) {
         crawlerUtil.log(`[타겟상품을 찾았습니다.] ${i + 1}번 페이지의 ${itemTotalCount}개의 상품 중 ${itemIndex}번째 상품입니다.`);
-        await crawlerUtil.waitRandom(shoppingResultPage, 5, 8);
-        purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage, linkElement: itemLinkElement });
+        await crawlerUtil.waitRandom(shoppingResultPage!, 10, 13);
+        purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage!, linkElement: itemLinkElement });
         await purchaseDetailPage?.bringToFront();
         await crawlerUtil.waitTillHTMLRendered(purchaseDetailPage!);
+
+        purchaseDetailPage = await this._handleServiceUnavailable(browser, page, shoppingResultPage!, itemLinkElement);
         return { shoppingResultPage, purchaseDetailPage, rankInfo };
       }
 
+      // 타겟 찾음 & 판매처 있음
       if (isFoundTarget && purchaseName) {
         crawlerUtil.log(`[타겟상품을 찾았습니다.] ${i + 1}번 페이지의 ${itemTotalCount}개의 상품 중 ${itemIndex}번째 상품입니다.`);
-        await crawlerUtil.waitRandom(shoppingResultPage, 5, 8);
+        await crawlerUtil.waitRandom(shoppingResultPage!, 10, 13);
 
         try {
           if (userMe.logicType === 'clean' || userMe.logicType === 'hidden') {
-            shoppingDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage, linkElement: itemLinkElement });
+            shoppingDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage!, linkElement: itemLinkElement });
           }
           if (userMe.logicType === 'detail') {
             const thumbnailSelector = isPc ? 'a[class^=thumbnail_thumb__]' : '*[class*=_img_area__] img';
             const thumbnailElement = await itemElement?.$(thumbnailSelector);
-            shoppingDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage, linkElement: thumbnailElement });
+            shoppingDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage!, linkElement: thumbnailElement });
           }
 
           if (isPc && shoppingDetailPage) {
+            await crawlerUtil.log('쇼핑 상세 페이지: ' + await shoppingDetailPage.url());
             purchaseDetailPage = await this._findPurchaseItemByPc(browser, shoppingDetailPage, purchaseName, setting) || undefined;
+            if (!purchaseDetailPage) crawlerUtil.log('판매처 상세페이지를 찾지 못했습니다.');
+
+            if (purchaseDetailPage) {
+              await purchaseDetailPage.bringToFront();
+
+              if (!purchaseDetailPage.url().includes('cr.shopping.naver.')) {
+                await crawlerUtil.log('자사몰 스토어로 이동중입니다. 추가 대기하겠습니다.');
+                await crawlerUtil.waitRandom(purchaseDetailPage, 5, 10);
+              }
+
+              await crawlerUtil.waitTillHTMLRendered(purchaseDetailPage);
+              await crawlerUtil.scrollBy(purchaseDetailPage, 'normal', 50, 1, 'down');
+
+              const isServiceUnavailable = await purchaseDetailPage.evaluate(
+                () => document.body.innerText.includes('현재 서비스 접속이 불가합니다')
+              ).catch(() => false);
+              if (isServiceUnavailable) {
+                await crawlerUtil.log('서비스 접속이 불가합니다. 페이지 닫기 후 재접속하겠습니다.');
+                await purchaseDetailPage.close();
+                await shoppingDetailPage?.bringToFront();
+                purchaseDetailPage = await this._findPurchaseItemByPc(browser, shoppingDetailPage!, purchaseName, setting) || undefined;
+              }
+
+              const isProductNotExist = await purchaseDetailPage?.evaluate(
+                () => document.body.innerText.includes('상품이 존재하지 않습니다')
+              ).catch(() => false);
+              if (isProductNotExist) {
+                await crawlerUtil.log('상품 미존재 메시지가 발생했습니다. 캐시 무시 후 새로고침합니다.');
+                await purchaseDetailPage!.setCacheEnabled(false);
+                await purchaseDetailPage!.reload({ waitUntil: ['networkidle0'] as any });
+                await purchaseDetailPage!.setCacheEnabled(true);
+                await crawlerUtil.waitTillHTMLRendered(purchaseDetailPage!);
+              }
+            }
+
+            return { shoppingResultPage, shoppingDetailPage, purchaseDetailPage, rankInfo };
           }
-          return { shoppingResultPage, shoppingDetailPage, purchaseDetailPage, totalShoppingDetailPage, rankInfo };
+
+          if (isMobile && shoppingDetailPage) {
+            const mobilePages = await this._findPurchaseItemByMobile(browser, shoppingDetailPage, purchaseName, setting);
+            purchaseDetailPage = mobilePages?.purchaseDetailPage;
+            totalShoppingDetailPage = mobilePages?.totalShoppingDetailPage;
+            return { shoppingResultPage, shoppingDetailPage, purchaseDetailPage, totalShoppingDetailPage, rankInfo };
+          }
+
+          if (!isPc && !isMobile) {
+            throw new Error('판매처가 입력 되었으나, 페이지 세팅값(PC/MOBILE)이 제대로 설정되어 있지 않습니다.');
+          }
         } catch (e) {
           console.error(e);
         }
+        throw new Error('판매처 이름이 올바르게 입력되지 않아서 작동을 중지합니다.');
       }
     }
 
