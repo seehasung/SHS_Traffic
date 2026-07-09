@@ -102,32 +102,51 @@ class AdbService {
   }
 
   async changeIpAddress({ deviceId, repeat }: ChangeIpAddressParams): Promise<string | undefined> {
-    const waitSeconds = 3;
+    const disableSeconds = 5;
+    const waitAfterEnable = 5;
 
     for (let i = 0; i < repeat; i++) {
-      const prevIp = await this.getIp();
+      let prevIp = '';
+      try {
+        prevIp = await this.getIp();
+      } catch {
+        crawlerUtil.log('IP 조회 실패 (인터넷 연결 없음). 데이터 재활성화 후 재시도합니다.');
+        await this.execCommand(deviceId, 'svc data enable').catch(() => {});
+        await crawlerUtil.delay(5000);
+        continue;
+      }
 
       if (!prevIp) {
         crawlerUtil.log('모바일 데이터가 꺼져있습니다.');
         continue;
       }
 
-      await this.toggleMobileNetwork({ deviceId, waitSeconds });
-      await crawlerUtil.delay(waitSeconds * 1000);
+      crawlerUtil.log(`[디버그] 변경 전 IP: ${prevIp}`);
+      await this.toggleMobileNetwork({ deviceId, disableSeconds });
+      await crawlerUtil.delay(waitAfterEnable * 1000);
 
-      const nextIp = await this.getIp();
+      let nextIp = '';
+      try {
+        nextIp = await this.getIp();
+      } catch {
+        crawlerUtil.log('IP 조회 실패. 테더링 연결이 끊어졌을 수 있습니다. 재시도합니다.');
+        await crawlerUtil.delay(3000);
+        continue;
+      }
+
+      crawlerUtil.log(`[디버그] 변경 후 IP: ${nextIp}`);
 
       if (prevIp === nextIp) {
         crawlerUtil.log(
-          `IP변경 재시도 횟수 : ${i + 1} (계속 실패 하면 테더링이 켜져있나 확인해주세요.)\n`,
+          `IP변경 재시도 횟수 : ${i + 1} (계속 실패 하면 PC의 WiFi/이더넷을 끄고 USB테더링만 사용해주세요.)\n`,
         );
-        crawlerUtil.log(`${waitSeconds}초 뒤 IP 변경을 재시도하겠습니다.`);
-        await crawlerUtil.delay(waitSeconds * 1000);
+        crawlerUtil.log(`${disableSeconds}초 뒤 IP 변경을 재시도하겠습니다.`);
+        await crawlerUtil.delay(disableSeconds * 1000);
       } else {
         crawlerUtil.log(
           `IP주소가 "${prevIp || '비행기모드'}" -> "${nextIp}"로 변경되었습니다.`,
         );
-        await crawlerUtil.delay(waitSeconds * 1000);
+        await crawlerUtil.delay(3000);
         return nextIp;
       }
     }
@@ -135,13 +154,13 @@ class AdbService {
     return undefined;
   }
 
-  async toggleMobileNetwork({ deviceId, waitSeconds }: ToggleMobileNetworkParams): Promise<void> {
-    const sleep = Math.round(waitSeconds);
+  async toggleMobileNetwork({ deviceId, disableSeconds }: { deviceId: string; disableSeconds: number }): Promise<void> {
+    const sleep = Math.round(disableSeconds);
     const command = `svc data disable; sleep ${sleep}; svc data enable`;
 
     await this.execCommand(deviceId, command);
-    crawlerUtil.log(`아이피를 변경중입니다. ${waitSeconds}초 기다리겠습니다.`);
-    await crawlerUtil.delay(waitSeconds * 1000);
+    crawlerUtil.log(`아이피를 변경중입니다. 데이터 OFF ${disableSeconds}초 후 ON`);
+    await crawlerUtil.delay(disableSeconds * 1000);
   }
 
   async getIp(): Promise<string> {
