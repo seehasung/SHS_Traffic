@@ -138,19 +138,20 @@ class KnowledgeService {
       // 1순위: data-ap-skuid 속성으로 매칭 (가장 정확)
       const skuId = await itemElement.evaluate((el: any) => el.getAttribute('data-ap-skuid') || '');
       if (String(skuId).trim() === targetId) {
-        // data-ap-index-ori 에서 순위 추출
         const oriIndex = await itemElement.evaluate((el: any) => {
           const idx = el.getAttribute('data-ap-index-ori');
           return idx != null ? Number(idx) + 1 : null;
         });
         const rankInfo = oriIndex != null ? ` (노출순위: ${oriIndex}위)` : '';
 
-        // 클릭 가능한 링크 찾기
         let foundLink: ElementHandle<Element> | null = null;
-        const titleLink = await itemElement.$('a[class*="product_link"], a[class*="thumbnail_thumb"]');
-        if (titleLink) {
-          foundLink = titleLink;
-        } else {
+        if (isPlus) {
+          foundLink = await itemElement.$('a[data-shp-contents-id]');
+        }
+        if (!foundLink) {
+          foundLink = await itemElement.$('a[class*="product_link"], a[class*="thumbnail_thumb"], a[class*="basicProductCard_link"]');
+        }
+        if (!foundLink) {
           const idLinks = await itemElement.$$('[data-shp-contents-id]');
           for (const link of idLinks) {
             const contentId = await link.evaluate((el: any) => el.getAttribute('data-shp-contents-id') || '');
@@ -161,12 +162,11 @@ class KnowledgeService {
           }
         }
         if (!foundLink) {
-          const fallbackLink = await itemElement.$('a[href]');
-          if (fallbackLink) foundLink = fallbackLink;
+          foundLink = await itemElement.$('a[href]');
         }
 
         if (foundLink) {
-          crawlerUtil.log(`상품번호 "${targetId}" 발견 (${i + 1}번째 아이템)${rankInfo}`);
+          crawlerUtil.log(`상품번호 "${targetId}" 발견 (${i + 1}번째 아이템, skuid 매칭)${rankInfo}`);
           await foundLink.evaluate((x: any) => x.setAttribute('target', '_blank'));
           return { itemLinkElement: foundLink, itemElement, itemTotalCount: items?.length, itemIndex: i + 1, rankPosition: oriIndex ?? (i + 1) };
         }
@@ -500,8 +500,11 @@ class KnowledgeService {
         for (let i = 0; i < plusMaxScroll; i++) {
           await crawlerUtil.autoScroll(plusStorePage, '', 200, 200, 3000).catch(console.error);
 
-          const itemsSelector = '*[class*=basicProductCard_basic_product_card]';
-          const items = await plusStorePage.$$(itemsSelector);
+          // 외부 <li data-ap-skuid>를 우선 선택, 없으면 내부 div 폴백
+          let items: ElementHandle<Element>[] = await plusStorePage.$$('li[data-ap-skuid]');
+          if (items.length === 0) {
+            items = await plusStorePage.$$('*[class*=basicProductCard_basic_product_card]');
+          }
           const findResult = await this.findTargetInProductList(items, isMobile, itemName, setting?.isIncludeAds === 'Y', isPlus);
           const { itemLinkElement, itemElement } = findResult;
           const isFoundTarget = !isEmpty(itemElement);
