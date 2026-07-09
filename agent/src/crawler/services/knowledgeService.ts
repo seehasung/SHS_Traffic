@@ -145,6 +145,17 @@ class KnowledgeService {
         await foundLink.evaluate((x: any) => x.setAttribute('target', '_blank'));
         return { itemLinkElement: foundLink, itemElement, itemTotalCount: items?.length, itemIndex: i + 1, rankPosition: oriIdx ?? (i + 1) };
       }
+
+      // 3순위: 링크 href에 상품번호가 포함된 경우 (모바일 폴백)
+      const allLinks = await itemElement.$$('a[href]');
+      for (const link of allLinks) {
+        const href = await link.evaluate((el: any) => el.href || '');
+        if (href.includes(targetId)) {
+          crawlerUtil.log(`상품번호 "${targetId}" 발견 (${i + 1}번째 아이템, href 매칭)`);
+          await link.evaluate((x: any) => x.setAttribute('target', '_blank'));
+          return { itemLinkElement: link, itemElement, itemTotalCount: items?.length, itemIndex: i + 1, rankPosition: i + 1 };
+        }
+      }
     }
     return {} as any;
   }
@@ -293,8 +304,40 @@ class KnowledgeService {
       await crawlerUtil.autoScroll(shoppingResultPage, '', 200, 200).catch(console.error);
       await crawlerUtil.waitTillHTMLRendered(shoppingResultPage);
 
-      const itemsSelector = '*[class*=basicList_list_basis] > div > div';
-      const items = await shoppingResultPage.$$(itemsSelector);
+      const pcSelector = '*[class*=basicList_list_basis] > div > div';
+      const mobileSelectors = [
+        '*[class*=product_list] > li',
+        '*[class*=productList] > li',
+        'ul[class*=list] > li[class*=item]',
+        'div[data-ap-skuid]',
+        'li[data-ap-skuid]',
+      ];
+
+      let items: ElementHandle<Element>[] = await shoppingResultPage.$$(pcSelector);
+      if (items.length === 0 && isMobile) {
+        for (const sel of mobileSelectors) {
+          items = await shoppingResultPage.$$(sel);
+          if (items.length > 0) {
+            crawlerUtil.log(`[모바일] 셀렉터 "${sel}"로 아이템 발견`);
+            break;
+          }
+        }
+        if (items.length === 0) {
+          items = await shoppingResultPage.$$('[data-ap-skuid]');
+          if (items.length === 0) {
+            const allItems = await shoppingResultPage.$$('li, div[class*=product]');
+            const skuItems: ElementHandle<Element>[] = [];
+            for (const el of allItems) {
+              const hasId = await el.evaluate((e: any) =>
+                e.getAttribute('data-ap-skuid') || e.querySelector('[data-shp-contents-id]') != null
+              );
+              if (hasId) skuItems.push(el);
+            }
+            items = skuItems;
+          }
+        }
+      }
+
       crawlerUtil.log(`[${i + 1}/${MAX_PAGES}페이지] 검색 결과 아이템 ${items.length}개 발견, 상품번호 "${itemName}" 검색 중`);
       const findResult = await this.findTargetInProductList(items, isMobile, itemName, false, isPlus);
       const { itemLinkElement, itemElement, itemTotalCount, itemIndex } = findResult;
