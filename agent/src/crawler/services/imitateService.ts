@@ -47,7 +47,9 @@ class ImitateService {
 
         if (isMobile) {
           await this._removeLayer({ page });
-          await page.waitForSelector('header #query');
+          const fakeSearchInput = await page.$('#MM_SEARCH_FAKE');
+          if (fakeSearchInput) await fakeSearchInput.click();
+          await page.waitForSelector('header #query', { visible: true });
           await page.type('header #query', randomWord, { delay: 100 });
           await page.waitForSelector('.sch_btn_search');
           const searchBtn = await page.$('.sch_btn_search');

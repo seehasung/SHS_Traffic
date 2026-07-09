@@ -17,7 +17,9 @@ class KnowledgeService {
 
     if (isMobile) {
       await this._removeLayer({ page });
-      await page.waitForSelector('header #query').catch(() => {});
+      const fakeSearchInput = await page.$('#MM_SEARCH_FAKE');
+      if (fakeSearchInput) await fakeSearchInput.click();
+      await page.waitForSelector('header #query', { visible: true }).catch(() => {});
       await page.type('header #query', keyword, { delay: 100 });
       const searchBtn = await page.$('.sch_btn_search');
       await crawlerUtil.clickByElemHandle(page, searchBtn);
