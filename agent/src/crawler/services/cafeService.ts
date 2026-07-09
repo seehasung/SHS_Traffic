@@ -270,12 +270,12 @@ class CafeService {
 
       if (clicked) {
         crawlerUtil.log(`카페 내부 ${i + 1}/${cafeInternalClicks}번째 게시판 클릭`);
-        await crawlerUtil.waitRandom(page, 3, 6);
-        await crawlerUtil.waitTillHTMLRendered(page, 5000);
+        await crawlerUtil.waitRandom(page, 2, 4);
+        await crawlerUtil.waitTillHTMLRendered(page, 3000);
 
         const innerHeight = Math.round(await page.evaluate(() => document.body.scrollHeight));
-        await crawlerUtil.scrollRandom(page, innerHeight, 3, 2, 4);
-        await crawlerUtil.waitRandom(page, random(5, 15), random(15, 25));
+        await crawlerUtil.scrollRandom(page, innerHeight, 3, 2, 3);
+        await crawlerUtil.waitRandom(page, random(3, 8), random(8, 15));
       } else {
         crawlerUtil.log(`카페 내부 클릭 가능한 링크가 없어서 스킵합니다.`);
         break;

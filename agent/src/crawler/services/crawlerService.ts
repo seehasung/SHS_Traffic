@@ -110,9 +110,9 @@ class CrawlerService {
       elem.setAttribute('autocomplete', 'off');
       elem.removeAttribute('readonly');
     });
-    await page.type(idSelector, email, { delay: 300 });
-    await crawlerUtil.delay(1000);
-    await page.type(passwordSelector, password, { delay: 300 });
+    await page.type(idSelector, email, { delay: 100 });
+    await crawlerUtil.delay(500);
+    await page.type(passwordSelector, password, { delay: 100 });
     await page.$eval(passwordSelector, (elem: any) => {
       elem.setAttribute('autocomplete', 'off');
       elem.removeAttribute('readonly');

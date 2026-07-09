@@ -225,10 +225,10 @@ class CrawlerController {
 
     if (shouldStop()) throw new Error('CANCELLED');
 
-    await imitateService.randomSearch({ browser: this.browser, page: this.page, isMobile: !!isMobile, minWorkCount: 2, maxWorkCount: 3, minWaitTime: 2, maxWaitTime: 3 });
+    await imitateService.randomSearch({ browser: this.browser, page: this.page, isMobile: !!isMobile, minWorkCount: 2, maxWorkCount: 3, minWaitTime: 1, maxWaitTime: 2 });
     if (shouldStop()) throw new Error('CANCELLED');
 
-    await imitateService.randomClickMenuWithScroll({ page: this.page, setting: this.setting, minWaitTimeBeforeScroll: 2, maxWaitTimeBeforeScroll: 3, minWaitTimeAfterScroll: 4, maxWaitTimeAfterScroll: 8 });
+    await imitateService.randomClickMenuWithScroll({ page: this.page, setting: this.setting, minWaitTimeBeforeScroll: 1, maxWaitTimeBeforeScroll: 2, minWaitTimeAfterScroll: 2, maxWaitTimeAfterScroll: 4 });
     if (shouldStop()) throw new Error('CANCELLED');
 
     await imitateService.randomSearch({ browser: this.browser, page: this.page, isMobile: !!isMobile, minWorkCount: 1, maxWorkCount: 1, minWaitTime: 1, maxWaitTime: 2, isGoBack: false });
@@ -237,13 +237,13 @@ class CrawlerController {
     await imitateService.clickNewsTitle(this.page, this.setting);
     if (shouldStop()) throw new Error('CANCELLED');
 
-    await imitateService.randomClickNews({ browser: this.browser, page: this.page, userMe: this.setting, setting: this.setting, minWaitTimeAfter: 8, maxWaitTimeAfter: 15 });
+    await imitateService.randomClickNews({ browser: this.browser, page: this.page, userMe: this.setting, setting: this.setting, minWaitTimeAfter: 5, maxWaitTimeAfter: 8 });
     if (shouldStop()) throw new Error('CANCELLED');
 
-    await imitateService.randomSearch({ browser: this.browser, page: this.page, isMobile: !!isMobile, minWorkCount: 1, maxWorkCount: 1, minWaitTime: 2, maxWaitTime: 3 });
+    await imitateService.randomSearch({ browser: this.browser, page: this.page, isMobile: !!isMobile, minWorkCount: 1, maxWorkCount: 1, minWaitTime: 1, maxWaitTime: 2 });
     if (shouldStop()) throw new Error('CANCELLED');
 
-    await imitateService.randomClickMenuWithScroll({ page: this.page, setting: this.setting, minWaitTimeBeforeScroll: 1, maxWaitTimeBeforeScroll: 3, minWaitTimeAfterScroll: 1, maxWaitTimeAfterScroll: 3 });
+    await imitateService.randomClickMenuWithScroll({ page: this.page, setting: this.setting, minWaitTimeBeforeScroll: 1, maxWaitTimeBeforeScroll: 2, minWaitTimeAfterScroll: 1, maxWaitTimeAfterScroll: 2 });
   }
 
   private shuffleKeyword(keyword: string): string {
@@ -483,12 +483,11 @@ class CrawlerController {
       crawlerUtil.log('사이트 페이지를 닫겠습니다.');
       await this.postPage.bringToFront().catch(() => {});
       await crawlerUtil.autoScroll(this.postPage, '', 200, 200, 3000).catch(() => {});
-      await crawlerUtil.waitRandom(this.postPage, 5, 10).catch(() => {});
+      await crawlerUtil.waitRandom(this.postPage, 2, 4).catch(() => {});
       await this.postPage.close().catch(() => {});
       this.postPage = undefined;
     }
 
-    // 쇼핑 모드: 기존 페이지 정리
     if (this.purchaseDetailPage) {
       crawlerUtil.log('구매상세 페이지를 닫겠습니다.');
       await this.purchaseDetailPage.bringToFront().catch(() => {});
@@ -499,7 +498,7 @@ class CrawlerController {
       crawlerUtil.log('쇼핑상세 페이지를 닫겠습니다.');
       await this.shoppingDetailPage.bringToFront().catch(() => {});
       await crawlerUtil.autoScroll(this.shoppingDetailPage, '', 200, 200, 3000).catch(() => {});
-      await crawlerUtil.waitRandom(this.shoppingDetailPage, 5, 10).catch(() => {});
+      await crawlerUtil.waitRandom(this.shoppingDetailPage, 2, 4).catch(() => {});
       await this.shoppingDetailPage.close().catch(() => {});
     }
 
@@ -507,14 +506,14 @@ class CrawlerController {
       crawlerUtil.log('쇼핑결과 페이지를 닫겠습니다.');
       await this.shoppingResultPage.bringToFront().catch(() => {});
       await crawlerUtil.autoScroll(this.shoppingResultPage, '', 200, 200, 3000).catch(() => {});
-      await crawlerUtil.waitRandom(this.shoppingResultPage, 5, 10).catch(() => {});
+      await crawlerUtil.waitRandom(this.shoppingResultPage, 2, 4).catch(() => {});
       await this.shoppingResultPage.close().catch(() => {});
     }
 
     if (this.page) {
       await this.page.bringToFront().catch(() => {});
       await crawlerUtil.autoScroll(this.page).catch(() => {});
-      await crawlerUtil.waitRandom(this.page, 5, 10).catch(() => {});
+      await crawlerUtil.waitRandom(this.page, 2, 4).catch(() => {});
     }
 
     try {
@@ -552,18 +551,18 @@ class CrawlerController {
       await imitateService.randomClickMenuWithScroll({ page: this.page, setting: this.setting, minWaitTimeBeforeScroll: 1, maxWaitTimeBeforeScroll: 3, minWaitTimeAfterScroll: 1, maxWaitTimeAfterScroll: 1 });
       if (shouldStop()) throw new Error('CANCELLED');
 
-      await imitateService.randomClickNews({ browser: this.browser, page: this.page, userMe: this.setting, setting: this.setting, minWaitTimeAfter: 8, maxWaitTimeAfter: 15 });
+      await imitateService.randomClickNews({ browser: this.browser, page: this.page, userMe: this.setting, setting: this.setting, minWaitTimeAfter: 5, maxWaitTimeAfter: 8 });
       if (shouldStop()) throw new Error('CANCELLED');
 
-      await imitateService.randomSearch({ browser: this.browser, page: this.page, isMobile: true, minWorkCount: 1, maxWorkCount: 1, minWaitTime: 1, maxWaitTime: 3 });
+      await imitateService.randomSearch({ browser: this.browser, page: this.page, isMobile: true, minWorkCount: 1, maxWorkCount: 1, minWaitTime: 1, maxWaitTime: 2 });
     } else {
-      await imitateService.randomClickNews({ browser: this.browser, page: this.page, userMe: this.setting, setting: this.setting, minWaitTimeAfter: 8, maxWaitTimeAfter: 15 });
+      await imitateService.randomClickNews({ browser: this.browser, page: this.page, userMe: this.setting, setting: this.setting, minWaitTimeAfter: 5, maxWaitTimeAfter: 8 });
       if (shouldStop()) throw new Error('CANCELLED');
 
-      await crawlerUtil.waitRandom(this.page, 1, 3);
+      await crawlerUtil.waitRandom(this.page, 1, 2);
       if (shouldStop()) throw new Error('CANCELLED');
 
-      await imitateService.randomSearch({ browser: this.browser, page: this.page, isMobile: false, minWorkCount: 2, maxWorkCount: 3, minWaitTime: 1, maxWaitTime: 3 });
+      await imitateService.randomSearch({ browser: this.browser, page: this.page, isMobile: false, minWorkCount: 2, maxWorkCount: 3, minWaitTime: 1, maxWaitTime: 2 });
       if (shouldStop()) throw new Error('CANCELLED');
 
       await imitateService.randomClickMenuWithScroll({ page: this.page, setting: this.setting, minWaitTimeBeforeScroll: 1, maxWaitTimeBeforeScroll: 2, minWaitTimeAfterScroll: 1, maxWaitTimeAfterScroll: 2 });
@@ -572,13 +571,13 @@ class CrawlerController {
       await crawlerUtil.waitRandom(this.page, 1, 2);
       if (shouldStop()) throw new Error('CANCELLED');
 
-      await imitateService.randomSearch({ browser: this.browser, page: this.page, isMobile: false, minWorkCount: 1, maxWorkCount: 1, minWaitTime: 1, maxWaitTime: 3 });
+      await imitateService.randomSearch({ browser: this.browser, page: this.page, isMobile: false, minWorkCount: 1, maxWorkCount: 1, minWaitTime: 1, maxWaitTime: 2 });
       if (shouldStop()) throw new Error('CANCELLED');
 
-      await imitateService.randomClickMenuWithScroll({ page: this.page, setting: this.setting, minWaitTimeBeforeScroll: 1, maxWaitTimeBeforeScroll: 3, minWaitTimeAfterScroll: 1, maxWaitTimeAfterScroll: 1 });
+      await imitateService.randomClickMenuWithScroll({ page: this.page, setting: this.setting, minWaitTimeBeforeScroll: 1, maxWaitTimeBeforeScroll: 2, minWaitTimeAfterScroll: 1, maxWaitTimeAfterScroll: 1 });
       if (shouldStop()) throw new Error('CANCELLED');
 
-      await imitateService.randomClickNews({ browser: this.browser, page: this.page, userMe: this.setting, setting: this.setting, minWaitTimeAfter: 15, maxWaitTimeAfter: 25 });
+      await imitateService.randomClickNews({ browser: this.browser, page: this.page, userMe: this.setting, setting: this.setting, minWaitTimeAfter: 8, maxWaitTimeAfter: 15 });
     }
   }
 

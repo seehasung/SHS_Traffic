@@ -530,6 +530,24 @@ ipcMain.on('worker:connect', async (_event, data: { serverUrl: string; loginId: 
       loginWindow?.webContents.send('worker:status', { type: 'disconnected' });
     });
 
+    workerClient.on('replaced', () => {
+      loginWindow?.webContents.send('worker:status', {
+        type: 'error',
+        message: '다른 PC/프로그램에서 같은 계정으로 접속하여 연결이 끊어졌습니다. 중복 실행을 확인해주세요.',
+      });
+      workerClient?.disconnect();
+      workerClient = null;
+    });
+
+    workerClient.on('auth-failed', (reason: string) => {
+      loginWindow?.webContents.send('worker:status', {
+        type: 'error',
+        message: '인증 실패: 로그인 정보를 확인해주세요. (' + reason + ')',
+      });
+      workerClient?.disconnect();
+      workerClient = null;
+    });
+
     workerClient.on('error', (msg: string) => {
       loginWindow?.webContents.send('worker:status', { type: 'error', message: msg });
     });

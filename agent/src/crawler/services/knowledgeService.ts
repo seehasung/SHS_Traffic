@@ -283,9 +283,9 @@ class KnowledgeService {
     for (let i = 0; i < MAX_PAGES; i++) {
       pagesScanned = i + 1;
       if (i === 0) {
-        await crawlerUtil.waitRandom(shoppingResultPage, 2, 5).catch(console.error);
+        await crawlerUtil.waitRandom(shoppingResultPage, 1, 3).catch(console.error);
       } else {
-        await crawlerUtil.waitRandom(shoppingResultPage, 0, 2).catch(console.error);
+        await crawlerUtil.waitRandom(shoppingResultPage, 0, 1).catch(console.error);
       }
       await crawlerUtil.autoScroll(shoppingResultPage, '', 200, 200).catch(console.error);
       await crawlerUtil.waitTillHTMLRendered(shoppingResultPage);
@@ -319,7 +319,7 @@ class KnowledgeService {
 
       if (isFoundTarget && !purchaseName) {
         crawlerUtil.log(`[타겟상품을 찾았습니다.] ${i + 1}번 페이지의 ${itemTotalCount}개의 상품 중 ${itemIndex}번째 상품입니다.`);
-        await crawlerUtil.waitRandom(shoppingResultPage, 10, 13);
+        await crawlerUtil.waitRandom(shoppingResultPage, 5, 8);
         purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage, linkElement: itemLinkElement });
         await purchaseDetailPage?.bringToFront();
         await crawlerUtil.waitTillHTMLRendered(purchaseDetailPage!);
@@ -328,7 +328,7 @@ class KnowledgeService {
 
       if (isFoundTarget && purchaseName) {
         crawlerUtil.log(`[타겟상품을 찾았습니다.] ${i + 1}번 페이지의 ${itemTotalCount}개의 상품 중 ${itemIndex}번째 상품입니다.`);
-        await crawlerUtil.waitRandom(shoppingResultPage, 10, 13);
+        await crawlerUtil.waitRandom(shoppingResultPage, 5, 8);
 
         try {
           if (userMe.logicType === 'clean' || userMe.logicType === 'hidden') {
@@ -367,12 +367,12 @@ class KnowledgeService {
 
     const { totalScrollHeight, oneHalfScrollHeight } = await this._measurePageHeight(page, setting, isTestMode);
     await crawlerUtil.scrollBy(page, 'normal', oneHalfScrollHeight, 1, 'down');
-    await crawlerUtil.scrollRandom(page, totalScrollHeight, 4, 3, 5);
+    await crawlerUtil.scrollRandom(page, totalScrollHeight, 4, 2, 3);
 
     crawlerUtil.log(`[1차 반영] ${minWaitTime1}~${maxWaitTime1}초 랜덤체류`);
     await crawlerUtil.waitRandom(page, minWaitTime1, maxWaitTime1);
 
-    await crawlerUtil.scrollRandom(page, totalScrollHeight, 4, 3, 5);
+    await crawlerUtil.scrollRandom(page, totalScrollHeight, 4, 2, 3);
 
     crawlerUtil.log(`[2차 반영] ${minWaitTime2}~${maxWaitTime2}초 랜덤체류`);
     await crawlerUtil.waitRandom(page, minWaitTime2, maxWaitTime2);
@@ -391,12 +391,12 @@ class KnowledgeService {
     const { totalScrollHeight, oneHalfScrollHeight, oneThirdScrollHeight } = await this._measurePageHeight(page, setting, isTestMode);
 
     await this._clickProductMenuRandom({ page, isMobile, scrollHeight: oneThirdScrollHeight });
-    await crawlerUtil.scrollRandom(page, totalScrollHeight, 4, 3, 5);
+    await crawlerUtil.scrollRandom(page, totalScrollHeight, 4, 2, 3);
 
     crawlerUtil.log(`[1차 반영] ${minWaitTime1}~${maxWaitTime1}초 랜덤체류`);
     await crawlerUtil.waitRandom(page, minWaitTime1, maxWaitTime1);
 
-    await crawlerUtil.scrollRandom(page, totalScrollHeight, 4, 3, 5);
+    await crawlerUtil.scrollRandom(page, totalScrollHeight, 4, 2, 3);
 
     crawlerUtil.log(`[2차 반영] ${minWaitTime2}~${maxWaitTime2}초 랜덤체류`);
     await crawlerUtil.waitRandom(page, minWaitTime2, maxWaitTime2);
@@ -416,13 +416,13 @@ class KnowledgeService {
     const { totalScrollHeight, oneHalfScrollHeight, oneThirdScrollHeight } = await this._measurePageHeight(page, setting, isTestMode);
 
     await crawlerUtil.키워드위치로포커스이동(page, keyword);
-    await crawlerUtil.scrollRandom(page, totalScrollHeight, 4, 3, 5);
+    await crawlerUtil.scrollRandom(page, totalScrollHeight, 4, 2, 3);
 
     crawlerUtil.log(`[1차 반영] ${minWaitTime1}~${maxWaitTime1}초 랜덤체류`);
     await crawlerUtil.waitRandom(page, minWaitTime1, maxWaitTime1);
 
     await this._clickProductMenuRandom({ page, isMobile, scrollHeight: oneThirdScrollHeight });
-    await crawlerUtil.scrollRandom(page, totalScrollHeight, 4, 3, 5);
+    await crawlerUtil.scrollRandom(page, totalScrollHeight, 4, 2, 3);
 
     crawlerUtil.log(`[2차 반영] ${minWaitTime2}~${maxWaitTime2}초 랜덤체류`);
     await crawlerUtil.waitRandom(page, minWaitTime2, maxWaitTime2);

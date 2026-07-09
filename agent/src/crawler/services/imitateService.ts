@@ -48,13 +48,13 @@ class ImitateService {
         if (isMobile) {
           await this._removeLayer({ page });
           await page.waitForSelector('header #query');
-          await page.type('header #query', randomWord, { delay: 300 });
+          await page.type('header #query', randomWord, { delay: 100 });
           await page.waitForSelector('.sch_btn_search');
           const searchBtn = await page.$('.sch_btn_search');
           await crawlerUtil.clickByElemHandle(page, searchBtn);
         } else {
           await page.waitForSelector('#query');
-          await page.type('#query', randomWord, { delay: 300 });
+          await page.type('#query', randomWord, { delay: 100 });
           await page.waitForSelector('#search-btn');
           const searchBtn = await page.$('#search-btn');
           await crawlerUtil.clickByElemHandle(page, searchBtn);
@@ -107,9 +107,9 @@ class ImitateService {
         if (!newPage) return crawlerUtil.log('clickRandomNewsInSearchResultPage, 새로운페이지를 가져오지 못했습니다.');
         await newPage?.bringToFront();
         await crawlerUtil.autoScroll(newPage);
-        await crawlerUtil.waitRandom(newPage, 5, 10);
+        await crawlerUtil.waitRandom(newPage, 3, 5);
         await newPage?.close();
-        await crawlerUtil.wait(page, 3);
+        await crawlerUtil.wait(page, 1);
         await crawlerUtil.goBack(page);
       }
       await crawlerUtil.goBack(page);
@@ -159,8 +159,8 @@ class ImitateService {
     minWaitTimeBeforeScroll?: number; maxWaitTimeBeforeScroll?: number;
     minWaitTimeAfterScroll?: number; maxWaitTimeAfterScroll?: number;
   }) {
-    const { page, setting, minWaitTimeBeforeScroll = 1, maxWaitTimeBeforeScroll = 3,
-      minWaitTimeAfterScroll = 4, maxWaitTimeAfterScroll = 8 } = params;
+    const { page, setting, minWaitTimeBeforeScroll = 1, maxWaitTimeBeforeScroll = 2,
+      minWaitTimeAfterScroll = 2, maxWaitTimeAfterScroll = 4 } = params;
     try {
       crawlerUtil.log('\n[랜덤 카테고리 클릭 후 스크롤]\n');
       await this._randomClickMenu(page, setting);
@@ -258,7 +258,7 @@ class ImitateService {
         }
         await crawlerUtil.waitTillHTMLRendered(newsDetailPage, 3000);
         await crawlerUtil.waitForSelector(newsDetailPage, '.newsct_body');
-        await crawlerUtil.delay(2000);
+        await crawlerUtil.delay(1000);
         crawlerUtil.log(`클릭 된 랜덤 뉴스 타이틀 "${randomNewsTitle}"`);
         if ((minWaitTimeBefore as number) > 0 || (maxWaitTimeBefore as number) > 0) await crawlerUtil.waitRandom(newsDetailPage, minWaitTimeBefore as number, maxWaitTimeBefore as number);
         await crawlerUtil.autoScroll(newsDetailPage);

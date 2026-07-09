@@ -237,7 +237,7 @@ class CrawlerUtil {
           if (direction === 'up') window.scrollBy(0, diff * -1);
           else window.scrollBy(0, diff);
         }, { diff, direction });
-        const delay = speed === 'fast' ? 400 : speed === 'normal' ? 800 : 1500;
+        const delay = speed === 'fast' ? 200 : speed === 'normal' ? 400 : 800;
         await this.delay(delay);
       }
     } catch (e) {
@@ -255,7 +255,7 @@ class CrawlerUtil {
     return page.$$(selector);
   }
 
-  async autoScroll(page: Page, selector = '', delay = 500, distance = 700, maxScrollHeight = Number.MAX_SAFE_INTEGER) {
+  async autoScroll(page: Page, selector = '', delay = 300, distance = 700, maxScrollHeight = Number.MAX_SAFE_INTEGER) {
     try {
       if (selector) await page.waitForSelector(selector);
       await this.wait(page, 1);
@@ -286,7 +286,7 @@ class CrawlerUtil {
     }
   }
 
-  async scrollRandom(page: Page, totalDiff = 1400, totalCount = 4, minWaitTime = 3, maxWaitTime = 5) {
+  async scrollRandom(page: Page, totalDiff = 1400, totalCount = 4, minWaitTime = 2, maxWaitTime = 3) {
     await this.scrollTo(page, 'bottom');
     await this.scrollBy(page, 'normal', totalDiff / 2, 1, 'up');
     await this.wait(page, 1);
@@ -301,13 +301,13 @@ class CrawlerUtil {
 
   async goto(page: Page, url: string) {
     this.log(`"${url}"로 이동`);
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60 * 1000 * 5 });
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
     await this.waitTillHTMLRendered(page, 3000);
   }
 
   async goBack(page: Page) {
     try {
-      await page.goBack({ waitUntil: 'networkidle2', timeout: 60 * 1000 * 5 });
+      await page.goBack({ waitUntil: 'networkidle2', timeout: 60000 });
       await this.wait(page, 1);
     } catch (e) {
       this.log('뒤로가기 에러 발생: ' + e);
@@ -420,7 +420,7 @@ class CrawlerUtil {
     }
   }
 
-  async waitTillHTMLRendered(page: Page, timeout = 30000) {
+  async waitTillHTMLRendered(page: Page, timeout = 15000) {
     const checkDurationMsecs = 1000;
     const maxChecks = timeout / checkDurationMsecs;
     let lastHTMLSize = 0;

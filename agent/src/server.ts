@@ -83,7 +83,7 @@ function broadcastConfigToAllWorkers() {
     const ws = workerSockets.get(worker.id);
     if (!ws || ws.readyState !== WebSocket.OPEN) continue;
     const workerMode = worker.mode ?? 'shopping';
-    const workerSettings = settingsRepo.getByMode(workerMode);
+    const workerSettings = workersRepo.getSettings(worker.id) ?? settingsRepo.getByMode(workerMode);
     const modeFiltered = allKnowledges.filter((k) => (k.mode ?? 'shopping') === workerMode);
     const assignedKnowledges = worker.assignedGroupNames.length > 0
       ? modeFiltered.filter((k) => k.groupName && worker.assignedGroupNames.includes(k.groupName))
@@ -240,7 +240,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
           : [];
         const update: ServerToWorkerMessage = {
           type: 'config:update',
-          settings: settingsRepo.getByMode(workerMode),
+          settings: workersRepo.getSettings(updated.id) ?? settingsRepo.getByMode(workerMode),
           knowledges: assignedKnowledges,
           naverAccounts: naverAccountsRepo.list(),
           crankKnowledges: assignedCrank,
@@ -678,7 +678,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
   function broadcastDashboard(msg: ServerMessage) {
     const payload = JSON.stringify(msg);
     for (const client of wss.clients) {
-      if (client.readyState === WebSocket.OPEN) client.send(payload);
+      if (client.readyState === WebSocket.OPEN) {
+        try {
+          client.send(payload);
+        } catch { /* ignore dead dashboard socket */ }
+      }
     }
   }
 
@@ -717,6 +721,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
           // 기존 연결 끊기
           const oldSocket = workerSockets.get(worker.id);
           if (oldSocket && oldSocket !== socket && oldSocket.readyState === WebSocket.OPEN) {
+            console.warn(`[Worker WS] 워커 "${worker.name}" (${worker.id}): 기존 연결을 REPLACED 처리합니다 (중복 접속 감지).`);
             oldSocket.close(4000, 'REPLACED');
           }
           workerSockets.set(worker.id, socket);
@@ -743,7 +748,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
           const ok: ServerToWorkerMessage = {
             type: 'auth:ok',
             workerId: worker.id,
-            settings: settingsRepo.getByMode(workerMode),
+            settings: workersRepo.getSettings(worker.id) ?? settingsRepo.getByMode(workerMode),
             knowledges: assignedKnowledges,
             naverAccounts: naverAccountsRepo.list(),
             crankKnowledges: assignedCrank,
@@ -898,7 +903,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
       }
     });
 
-    socket.on('close', () => {
+    socket.on('close', (code, reason) => {
+      console.log(`[Worker WS] 소켓 닫힘 workerId=${authenticatedWorkerId ?? '(미인증)'} code=${code} reason=${reason?.toString?.() ?? ''}`);
       if (authenticatedWorkerId) {
         const existing = workerStatuses.get(authenticatedWorkerId);
         if (existing) {

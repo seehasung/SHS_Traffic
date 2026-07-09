@@ -45,7 +45,7 @@ class BlogRankService {
           el.click();
         });
         crawlerUtil.log('동영상 재생버튼을 클릭했습니다.');
-        await crawlerUtil.delay(10000);
+        await crawlerUtil.delay(5000);
       }
     } catch {
       // 동영상 없음 — 무시
@@ -110,7 +110,7 @@ class BlogRankService {
       const homeHandle = await (targetPage as any).$('a[href="/"]');
       await crawlerUtil.clickByElemHandle(targetPage as any, homeHandle);
       crawlerUtil.log('로고버튼 클릭 후 대기하겠습니다.');
-      await crawlerUtil.waitRandom(targetPage as any, 15, 30);
+      await crawlerUtil.waitRandom(targetPage as any, 8, 15);
     } catch {
       crawlerUtil.log('로고버튼을 찾는데 실패했습니다.');
     }
@@ -156,7 +156,7 @@ class BlogRankService {
     if (keyword) {
       crawlerUtil.log('2. 본문 내 타겟 키워드 후반부 랜덤 위치로 이동하겠습니다.');
       await this._scrollToKeyword(targetPage as any, keyword);
-      await crawlerUtil.waitRandom(targetPage as any, 3, 5);
+      await crawlerUtil.waitRandom(targetPage as any, 2, 3);
     }
 
     crawlerUtil.log(`3. [1차반영] ${minWaitTime1}~${maxWaitTime1}초 랜덤체류 진행하겠습니다.`);
@@ -195,7 +195,7 @@ class BlogRankService {
       const homeHandle = await (targetPage as any).$('a[href="/"]');
       await crawlerUtil.clickByElemHandle(targetPage as any, homeHandle);
       crawlerUtil.log('8. 로고버튼 클릭 후 대기하겠습니다.');
-      await crawlerUtil.waitRandom(targetPage as any, 15, 30);
+      await crawlerUtil.waitRandom(targetPage as any, 8, 15);
     } catch {
       crawlerUtil.log('7. 로고버튼을 찾는데 실패했습니다.');
     }

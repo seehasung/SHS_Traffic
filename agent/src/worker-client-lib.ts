@@ -214,20 +214,30 @@ export class WorkerClient extends EventEmitter {
     });
 
     this.ws.on('close', (code, reason) => {
-      console.log(`[Worker] 연결 종료 (code=${code}, reason=${reason})`);
+      const reasonStr = reason?.toString?.() ?? '';
+      console.log(`[Worker] 연결 종료 (code=${code}, reason=${reasonStr})`);
+      this.sendLog(`연결 종료 (code=${code}, reason=${reasonStr})`, 'warn');
       this.isAuthenticated = false;
       this.stopHeartbeat();
       this.stopWsPingLoop();
+
+      if (code === 4000) {
+        this.emit('replaced');
+        return;
+      }
+      if (code === 4401) {
+        this.emit('auth-failed', reasonStr);
+        return;
+      }
+
       this.emit('disconnected');
-      // 작업은 계속 돌아간다 (this.isRunning 유지). 로그는 pendingLogs 에 큐잉됨.
       this.scheduleReconnect();
     });
 
     this.ws.on('error', (err) => {
       console.error('[Worker] WebSocket 에러:', err.message);
-      // error 시 ws 라이브러리는 close 도 함께 발생시키지만, 혹시 누락될 경우를 대비해 재연결도 스케줄
+      this.sendLog(`WebSocket 에러: ${err.message}`, 'error');
       this.emit('error', err.message);
-      this.scheduleReconnect();
     });
   }
 
