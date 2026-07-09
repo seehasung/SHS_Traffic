@@ -131,21 +131,20 @@ class ImitateService {
       if (isMobile) await this._removeLayer({ page });
 
       const selector = isMobile
-        ? 'a.shs_link.ITEM'
+        ? '.chm_menu li a'
         : 'a.link_service[target*=blank]:not(:has(.ico_ad))';
 
-      await page.waitForSelector(selector);
+      await page.waitForSelector(selector, { visible: true });
       const menuElements = await page.$$(selector);
-      let randomMenu = sample(menuElements) as ElementHandle<Element> | undefined;
-
-      while (randomMenu) {
-        const randomMenuLink = await randomMenu.evaluate((element: any) => element.getAttribute('href'));
-        if (randomMenuLink.includes('map.naver') || randomMenuLink.includes('chzzk') || randomMenuLink.includes('book')) {
-          randomMenu = sample(menuElements) as ElementHandle<Element> | undefined;
-        } else {
-          break;
-        }
-      }
+      const filteredMenus = await Promise.all(
+        menuElements.map(async (el) => {
+          const href = await page.evaluate((e: any) => e.getAttribute('href'), el);
+          if (href && !href.includes('map.naver') && !href.includes('veta.naver') && !href.includes('chzzk') && !href.includes('book')) return el;
+          return null;
+        }),
+      );
+      const validMenus = filteredMenus.filter(Boolean) as ElementHandle<Element>[];
+      const randomMenu = sample(validMenus);
       if (!randomMenu) return crawlerUtil.log('네이버 메인에서 임의의 메뉴를 추출하지 못했습니다.');
 
       const randomMenuName = await randomMenu.evaluate((node: any) => node.innerText);
@@ -221,23 +220,14 @@ class ImitateService {
       await crawlerUtil.goto(page, url);
 
       const pageUrl = page.url();
-      const isMobileNews = pageUrl?.includes('m.news.naver.com');
-      const candidateSelectors = isMobileNews
-        ? ['.r_news_drw', '.newsct_body a', 'a[class*="news"]']
-        : ['.cjs_news_a._cds_link', '.cjs_news_mw a', 'a[class*="cds_news"]', '.sa_text a', '#newsct a.sa_text_title', 'a[class*="_cds_link"]', '.rankingnews_list a'];
+      await crawlerUtil.waitTillHTMLRendered(page, 5000);
 
-      let newsElements: any[] = [];
-      for (const sel of candidateSelectors) {
-        try {
-          await page.waitForSelector(sel, { timeout: 3000 });
-          newsElements = await page.$$(sel);
-          if (newsElements.length > 0) break;
-        } catch {
-          continue;
-        }
-      }
+      const isSectionPage = pageUrl?.includes('news.naver.com/section');
+      const selector = isSectionPage ? '.sa_text_strong' : '.cnf_news_item';
 
-      const randomNews = sample(newsElements?.slice(0, 5));
+      await page.waitForSelector(selector).catch(() => {});
+      const newsElements = await page.$$(selector);
+      const randomNews = sample(newsElements?.slice(0, 3));
 
       if (!randomNews) return crawlerUtil.log('랜덤 뉴스를 가져오는데 실패했습니다.');
       const randomNewsTitle = await page.evaluate((news: any) => news.innerText, randomNews);
@@ -253,20 +243,14 @@ class ImitateService {
         await crawlerUtil.goBack(page);
         return;
       } else if (isMobile) {
-        const newsDetailPage = await crawlerUtil.getNewPageByClick({ browser, page, linkElement: randomNews });
-        if (!newsDetailPage) {
-          crawlerUtil.log('[랜덤뉴스클릭] 뉴스 상세페이지 열기 실패');
-          return;
-        }
-        await crawlerUtil.waitTillHTMLRendered(newsDetailPage, 3000);
-        await crawlerUtil.waitForSelector(newsDetailPage, '.newsct_body');
-        await crawlerUtil.delay(1000);
+        await crawlerUtil.clickByElemHandle(page, randomNews, false);
         crawlerUtil.log(`클릭 된 랜덤 뉴스 타이틀 "${randomNewsTitle}"`);
-        if ((minWaitTimeBefore as number) > 0 || (maxWaitTimeBefore as number) > 0) await crawlerUtil.waitRandom(newsDetailPage, minWaitTimeBefore as number, maxWaitTimeBefore as number);
-        await crawlerUtil.autoScroll(newsDetailPage);
-        if (minWaitTimeAfter > 0 || maxWaitTimeAfter > 0) await crawlerUtil.waitRandom(newsDetailPage, minWaitTimeAfter, maxWaitTimeAfter);
-        await newsDetailPage.close();
-        await page.bringToFront();
+        await crawlerUtil.waitTillHTMLRendered(page, 3000);
+        await crawlerUtil.waitForSelector(page, '.newsct_body');
+        await crawlerUtil.delay(1000);
+        if ((minWaitTimeBefore as number) > 0 || (maxWaitTimeBefore as number) > 0) await crawlerUtil.waitRandom(page, minWaitTimeBefore as number, maxWaitTimeBefore as number);
+        await crawlerUtil.autoScroll(page);
+        if (minWaitTimeAfter > 0 || maxWaitTimeAfter > 0) await crawlerUtil.waitRandom(page, minWaitTimeAfter, maxWaitTimeAfter);
         await crawlerUtil.goBack(page);
         return;
       }
