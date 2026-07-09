@@ -96,6 +96,21 @@ class KnowledgeService {
         continue;
       }
 
+      // 0순위: 모바일 id 속성으로 매칭 (예: id="_sr_lst_89498698283")
+      const elemId = await itemElement.evaluate((el: any) => el.id || '');
+      if (elemId && elemId.includes(targetId)) {
+        const linkEl = await itemElement.$('a[data-shp-contents-id]') || await itemElement.$('a[href]');
+        if (linkEl) {
+          const rank = await itemElement.evaluate((el: any) => {
+            const a = el.querySelector('[data-shp-contents-rank]');
+            return a ? Number(a.getAttribute('data-shp-contents-rank')) : null;
+          });
+          crawlerUtil.log(`상품번호 "${targetId}" 발견 (${i + 1}번째 아이템, 모바일 ID 매칭)`);
+          await linkEl.evaluate((x: any) => x.setAttribute('target', '_blank'));
+          return { itemLinkElement: linkEl, itemElement, itemTotalCount: items?.length, itemIndex: i + 1, rankPosition: rank ?? (i + 1) };
+        }
+      }
+
       // 1순위: data-ap-skuid 속성으로 매칭 (가장 정확)
       const skuId = await itemElement.evaluate((el: any) => el.getAttribute('data-ap-skuid') || '');
       if (String(skuId).trim() === targetId) {
@@ -306,11 +321,10 @@ class KnowledgeService {
 
       const pcSelector = '*[class*=basicList_list_basis] > div > div';
       const mobileSelectors = [
+        'div[class*=product_list_item]',
+        'div[id^=_sr_lst_]',
         '*[class*=product_list] > li',
         '*[class*=productList] > li',
-        'ul[class*=list] > li[class*=item]',
-        'div[data-ap-skuid]',
-        'li[data-ap-skuid]',
       ];
 
       let items: ElementHandle<Element>[] = await shoppingResultPage.$$(pcSelector);
