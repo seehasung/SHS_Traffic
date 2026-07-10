@@ -275,10 +275,10 @@ class KnowledgeService {
   }
 
   private async _handleServiceUnavailable(
-    browser: Browser, page: Page, shoppingResultPage: Page,
+    browser: Browser, detailPage: Page, shoppingResultPage: Page,
     itemLinkElement: ElementHandle<Element>,
   ): Promise<Page | undefined> {
-    let purchaseDetailPage: Page | undefined = page;
+    let purchaseDetailPage: Page | undefined = detailPage;
 
     if (!purchaseDetailPage?.url().includes('cr.shopping.naver.')) {
       await crawlerUtil.log('자사몰 스토어로 이동중입니다. 추가 대기하겠습니다.');
@@ -520,7 +520,9 @@ class KnowledgeService {
           await purchaseDetailPage?.bringToFront();
           await crawlerUtil.waitTillHTMLRendered(purchaseDetailPage!);
 
-          purchaseDetailPage = await this._handleServiceUnavailable(browser, page, plusStorePage, itemLinkElement);
+          if (purchaseDetailPage) {
+            purchaseDetailPage = await this._handleServiceUnavailable(browser, purchaseDetailPage, plusStorePage, itemLinkElement);
+          }
           return { shoppingResultPage, purchaseDetailPage };
         }
         return { shoppingResultPage };
@@ -601,7 +603,9 @@ class KnowledgeService {
         await purchaseDetailPage?.bringToFront();
         await crawlerUtil.waitTillHTMLRendered(purchaseDetailPage!);
 
-        purchaseDetailPage = await this._handleServiceUnavailable(browser, page, shoppingResultPage!, itemLinkElement);
+        if (purchaseDetailPage) {
+          purchaseDetailPage = await this._handleServiceUnavailable(browser, purchaseDetailPage, shoppingResultPage!, itemLinkElement);
+        }
         return { shoppingResultPage, purchaseDetailPage, rankInfo };
       }
 
