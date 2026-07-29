@@ -732,13 +732,18 @@ export function cleanupDatabase() {
       `).run(row.worker_id, row.worker_id);
     }
 
-    // rank_checks: 30일 이상 된 데이터 삭제
-    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    d.prepare(`DELETE FROM rank_checks WHERE checked_at < ?`).run(thirtyDaysAgo);
+    // logs: 3일 이상 된 데이터 삭제
+    const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000;
+    d.prepare(`DELETE FROM logs WHERE created_at < ?`).run(threeDaysAgo);
+    d.prepare(`DELETE FROM worker_logs WHERE created_at < ?`).run(threeDaysAgo);
+    d.prepare(`DELETE FROM failed_keywords WHERE created_at < ?`).run(threeDaysAgo);
 
-    // crank_checks: 30일 이상 된 데이터 삭제
+    // rank_checks: 3일 이상 된 데이터 삭제
+    d.prepare(`DELETE FROM rank_checks WHERE checked_at < ?`).run(threeDaysAgo);
+
+    // crank_checks: 3일 이상 된 데이터 삭제
     try {
-      d.prepare(`DELETE FROM crank_checks WHERE checked_at < ?`).run(thirtyDaysAgo);
+      d.prepare(`DELETE FROM crank_checks WHERE checked_at < ?`).run(threeDaysAgo);
     } catch { /* 테이블 없을 수 있음 */ }
 
     // VACUUM으로 삭제된 공간 실제 회수
