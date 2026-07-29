@@ -110,6 +110,9 @@ function broadcastConfigToAllWorkers() {
 export async function startServer(options: StartServerOptions = {}): Promise<StartedServer> {
   db();
 
+  // DB 정리를 가장 먼저 실행 (SQLITE_FULL 방지)
+  cleanupDatabase();
+
   // 존재하지 않는 그룹명을 워커 배정에서 정리
   const existingGroupNames = new Set(keywordGroupsRepo.list().map((g) => g.groupName));
   for (const w of workersRepo.list()) {
@@ -963,9 +966,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
       }
     }
   }, 10000);
-
-  // 서버 시작 전 DB 정리
-  cleanupDatabase();
 
   const port = options.port ?? DEFAULT_AGENT_PORT;
   const host = options.host ?? '0.0.0.0';
