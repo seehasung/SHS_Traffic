@@ -21,7 +21,7 @@ import {
   verifyWorkerLogin,
 } from './auth';
 import type { SessionPayload } from './auth';
-import { keywordGroupsRepo, knowledgesRepo, naverAccountsRepo, settingsRepo, logsRepo, workersRepo, productsRepo, workerLogsRepo, failedKeywordsRepo, rankChecksRepo, cafeEntriesRepo, crankGroupsRepo, crankKnowledgesRepo, crankChecksRepo } from './repos';
+import { keywordGroupsRepo, knowledgesRepo, naverAccountsRepo, settingsRepo, logsRepo, workersRepo, productsRepo, workerLogsRepo, failedKeywordsRepo, rankChecksRepo, cafeEntriesRepo, crankGroupsRepo, crankKnowledgesRepo, crankChecksRepo, cleanupDatabase } from './repos';
 import { runner } from './runner';
 import { staticWebDir } from './paths';
 
@@ -963,6 +963,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
       }
     }
   }, 10000);
+
+  // 서버 시작 전 DB 정리
+  cleanupDatabase();
 
   const port = options.port ?? DEFAULT_AGENT_PORT;
   const host = options.host ?? '0.0.0.0';

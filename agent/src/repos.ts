@@ -303,6 +303,11 @@ export const logsRepo = {
     const info = db()
       .prepare(`INSERT INTO logs(message, level, progress_count, created_at) VALUES(?, ?, ?, ?)`)
       .run(message, level, progressCount, now);
+    db().prepare(`
+      DELETE FROM logs WHERE id NOT IN (
+        SELECT id FROM logs ORDER BY id DESC LIMIT 1000
+      )
+    `).run();
     return { id: Number(info.lastInsertRowid), message, level, progressCount, createdAt: now };
   },
   clear() {
@@ -350,10 +355,10 @@ export const workerLogsRepo = {
     const info = db()
       .prepare(`INSERT INTO worker_logs(worker_id, worker_name, message, level, created_at) VALUES(?, ?, ?, ?, ?)`)
       .run(workerId, workerName, message, level, now);
-    // 오래된 로그 정리: 워커별 최근 5000건만 유지
+    // 오래된 로그 정리: 워커별 최근 2000건만 유지
     db().prepare(`
       DELETE FROM worker_logs WHERE worker_id = ? AND id NOT IN (
-        SELECT id FROM worker_logs WHERE worker_id = ? ORDER BY id DESC LIMIT 5000
+        SELECT id FROM worker_logs WHERE worker_id = ? ORDER BY id DESC LIMIT 2000
       )
     `).run(workerId, workerId);
     return { id: Number(info.lastInsertRowid), workerId, workerName, message, level, createdAt: now };
@@ -697,3 +702,49 @@ export const crankChecksRepo = {
     return rows.map((r: any) => ({ date: r.day, count: r.cnt }));
   },
 };
+
+// ──────────────── DB 정리 (서버 시작 시 호출) ────────────────
+export function cleanupDatabase() {
+  try {
+    console.log('[DB 정리] 오래된 로그 정리 시작...');
+    const d = db();
+
+    // logs: 최근 500건만 유지
+    d.prepare(`DELETE FROM logs WHERE id NOT IN (SELECT id FROM logs ORDER BY id DESC LIMIT 500)`).run();
+
+    // worker_logs: 워커별 최근 1000건만 유지
+    const workerIds = d.prepare(`SELECT DISTINCT worker_id FROM worker_logs`).all() as any[];
+    for (const row of workerIds) {
+      d.prepare(`
+        DELETE FROM worker_logs WHERE worker_id = ? AND id NOT IN (
+          SELECT id FROM worker_logs WHERE worker_id = ? ORDER BY id DESC LIMIT 1000
+        )
+      `).run(row.worker_id, row.worker_id);
+    }
+
+    // failed_keywords: 워커별 최근 500건만 유지
+    const fkWorkerIds = d.prepare(`SELECT DISTINCT worker_id FROM failed_keywords`).all() as any[];
+    for (const row of fkWorkerIds) {
+      d.prepare(`
+        DELETE FROM failed_keywords WHERE worker_id = ? AND id NOT IN (
+          SELECT id FROM failed_keywords WHERE worker_id = ? ORDER BY id DESC LIMIT 500
+        )
+      `).run(row.worker_id, row.worker_id);
+    }
+
+    // rank_checks: 30일 이상 된 데이터 삭제
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    d.prepare(`DELETE FROM rank_checks WHERE checked_at < ?`).run(thirtyDaysAgo);
+
+    // crank_checks: 30일 이상 된 데이터 삭제
+    try {
+      d.prepare(`DELETE FROM crank_checks WHERE checked_at < ?`).run(thirtyDaysAgo);
+    } catch { /* 테이블 없을 수 있음 */ }
+
+    // VACUUM으로 삭제된 공간 실제 회수
+    d.exec('VACUUM');
+    console.log('[DB 정리] 완료');
+  } catch (e) {
+    console.error('[DB 정리] 에러:', e);
+  }
+}
