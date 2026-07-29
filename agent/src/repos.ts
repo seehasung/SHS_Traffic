@@ -706,67 +706,37 @@ export const crankChecksRepo = {
 // ──────────────── DB 정리 (서버 시작 시 호출) ────────────────
 export function cleanupDatabase() {
   try {
-    console.log('[DB 정리] 오래된 로그 정리 시작...');
+    console.log('[DB 정리] 로그 테이블 정리 시작...');
     const d = db();
 
-    // 디스크가 꽉 찼을 때도 작동하도록 journal을 메모리로 전환
     try { d.pragma('journal_mode = MEMORY'); } catch {}
     try { d.pragma('synchronous = OFF'); } catch {}
 
-    // 로그 테이블들을 DROP 후 재생성 (DELETE보다 공간 즉시 해제)
-    const logTables = [
-      {
-        name: 'logs',
-        create: `CREATE TABLE IF NOT EXISTS logs (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          message TEXT NOT NULL, level TEXT NOT NULL,
-          progress_count INTEGER NOT NULL, created_at INTEGER NOT NULL
-        )`,
-        index: `CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at)`,
-      },
-      {
-        name: 'worker_logs',
-        create: `CREATE TABLE IF NOT EXISTS worker_logs (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          worker_id TEXT NOT NULL, worker_name TEXT NOT NULL,
-          message TEXT NOT NULL, level TEXT NOT NULL, created_at INTEGER NOT NULL
-        )`,
-        index: `CREATE INDEX IF NOT EXISTS idx_worker_logs_worker_id ON worker_logs(worker_id)`,
-      },
-      {
-        name: 'failed_keywords',
-        create: `CREATE TABLE IF NOT EXISTS failed_keywords (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          worker_id TEXT NOT NULL, worker_name TEXT NOT NULL,
-          knowledge_id TEXT, keyword TEXT NOT NULL, item_name TEXT NOT NULL,
-          purchase_name TEXT, group_name TEXT,
-          pages_scanned INTEGER NOT NULL, reason TEXT NOT NULL DEFAULT '',
-          created_at INTEGER NOT NULL
-        )`,
-        index: '',
-      },
-    ];
+    // 로그 테이블만 DROP 후 재생성 (나머지 데이터는 유지)
+    try {
+      d.exec(`DROP TABLE IF EXISTS logs`);
+      d.exec(`CREATE TABLE IF NOT EXISTS logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message TEXT NOT NULL, level TEXT NOT NULL,
+        progress_count INTEGER NOT NULL, created_at INTEGER NOT NULL
+      )`);
+      d.exec(`CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at)`);
+      console.log('[DB 정리] logs 테이블 초기화 완료');
+    } catch (e) { console.error('[DB 정리] logs 초기화 실패:', e); }
 
-    for (const t of logTables) {
-      try {
-        d.exec(`DROP TABLE IF EXISTS ${t.name}`);
-        d.exec(t.create);
-        if (t.index) d.exec(t.index);
-        console.log(`[DB 정리] ${t.name} 테이블 초기화 완료`);
-      } catch (e) {
-        console.error(`[DB 정리] ${t.name} 초기화 실패:`, e);
-      }
-    }
+    try {
+      d.exec(`DROP TABLE IF EXISTS worker_logs`);
+      d.exec(`CREATE TABLE IF NOT EXISTS worker_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        worker_id TEXT NOT NULL, worker_name TEXT NOT NULL,
+        message TEXT NOT NULL, level TEXT NOT NULL, created_at INTEGER NOT NULL
+      )`);
+      d.exec(`CREATE INDEX IF NOT EXISTS idx_worker_logs_worker_id ON worker_logs(worker_id)`);
+      console.log('[DB 정리] worker_logs 테이블 초기화 완료');
+    } catch (e) { console.error('[DB 정리] worker_logs 초기화 실패:', e); }
 
-    // rank_checks / crank_checks: 1일 이상 된 데이터 삭제
-    const oneDayAgo = Date.now() - 1 * 24 * 60 * 60 * 1000;
-    try { d.prepare(`DELETE FROM rank_checks WHERE checked_at < ?`).run(oneDayAgo); } catch {}
-    try { d.prepare(`DELETE FROM crank_checks WHERE checked_at < ?`).run(oneDayAgo); } catch {}
-
-    // VACUUM으로 삭제된 공간 실제 회수
     try { d.exec('VACUUM'); } catch {}
 
-    // journal 모드 복원
     try { d.pragma('journal_mode = WAL'); } catch {}
     try { d.pragma('synchronous = NORMAL'); } catch {}
 
