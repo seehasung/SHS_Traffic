@@ -709,45 +709,67 @@ export function cleanupDatabase() {
     console.log('[DB 정리] 오래된 로그 정리 시작...');
     const d = db();
 
-    // logs: 최근 500건만 유지
-    d.prepare(`DELETE FROM logs WHERE id NOT IN (SELECT id FROM logs ORDER BY id DESC LIMIT 500)`).run();
+    // 디스크가 꽉 찼을 때도 작동하도록 journal을 메모리로 전환
+    try { d.pragma('journal_mode = MEMORY'); } catch {}
+    try { d.pragma('synchronous = OFF'); } catch {}
 
-    // worker_logs: 워커별 최근 1000건만 유지
-    const workerIds = d.prepare(`SELECT DISTINCT worker_id FROM worker_logs`).all() as any[];
-    for (const row of workerIds) {
-      d.prepare(`
-        DELETE FROM worker_logs WHERE worker_id = ? AND id NOT IN (
-          SELECT id FROM worker_logs WHERE worker_id = ? ORDER BY id DESC LIMIT 1000
-        )
-      `).run(row.worker_id, row.worker_id);
+    // 로그 테이블들을 DROP 후 재생성 (DELETE보다 공간 즉시 해제)
+    const logTables = [
+      {
+        name: 'logs',
+        create: `CREATE TABLE IF NOT EXISTS logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          message TEXT NOT NULL, level TEXT NOT NULL,
+          progress_count INTEGER NOT NULL, created_at INTEGER NOT NULL
+        )`,
+        index: `CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at)`,
+      },
+      {
+        name: 'worker_logs',
+        create: `CREATE TABLE IF NOT EXISTS worker_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          worker_id TEXT NOT NULL, worker_name TEXT NOT NULL,
+          message TEXT NOT NULL, level TEXT NOT NULL, created_at INTEGER NOT NULL
+        )`,
+        index: `CREATE INDEX IF NOT EXISTS idx_worker_logs_worker_id ON worker_logs(worker_id)`,
+      },
+      {
+        name: 'failed_keywords',
+        create: `CREATE TABLE IF NOT EXISTS failed_keywords (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          worker_id TEXT NOT NULL, worker_name TEXT NOT NULL,
+          knowledge_id TEXT, keyword TEXT NOT NULL, item_name TEXT NOT NULL,
+          purchase_name TEXT, group_name TEXT,
+          pages_scanned INTEGER NOT NULL, reason TEXT NOT NULL DEFAULT '',
+          created_at INTEGER NOT NULL
+        )`,
+        index: '',
+      },
+    ];
+
+    for (const t of logTables) {
+      try {
+        d.exec(`DROP TABLE IF EXISTS ${t.name}`);
+        d.exec(t.create);
+        if (t.index) d.exec(t.index);
+        console.log(`[DB 정리] ${t.name} 테이블 초기화 완료`);
+      } catch (e) {
+        console.error(`[DB 정리] ${t.name} 초기화 실패:`, e);
+      }
     }
 
-    // failed_keywords: 워커별 최근 500건만 유지
-    const fkWorkerIds = d.prepare(`SELECT DISTINCT worker_id FROM failed_keywords`).all() as any[];
-    for (const row of fkWorkerIds) {
-      d.prepare(`
-        DELETE FROM failed_keywords WHERE worker_id = ? AND id NOT IN (
-          SELECT id FROM failed_keywords WHERE worker_id = ? ORDER BY id DESC LIMIT 500
-        )
-      `).run(row.worker_id, row.worker_id);
-    }
-
-    // 1일 이상 된 데이터 삭제
-    const threeDaysAgo = Date.now() - 1 * 24 * 60 * 60 * 1000;
-    d.prepare(`DELETE FROM logs WHERE created_at < ?`).run(threeDaysAgo);
-    d.prepare(`DELETE FROM worker_logs WHERE created_at < ?`).run(threeDaysAgo);
-    d.prepare(`DELETE FROM failed_keywords WHERE created_at < ?`).run(threeDaysAgo);
-
-    // rank_checks: 3일 이상 된 데이터 삭제
-    d.prepare(`DELETE FROM rank_checks WHERE checked_at < ?`).run(threeDaysAgo);
-
-    // crank_checks: 3일 이상 된 데이터 삭제
-    try {
-      d.prepare(`DELETE FROM crank_checks WHERE checked_at < ?`).run(threeDaysAgo);
-    } catch { /* 테이블 없을 수 있음 */ }
+    // rank_checks / crank_checks: 1일 이상 된 데이터 삭제
+    const oneDayAgo = Date.now() - 1 * 24 * 60 * 60 * 1000;
+    try { d.prepare(`DELETE FROM rank_checks WHERE checked_at < ?`).run(oneDayAgo); } catch {}
+    try { d.prepare(`DELETE FROM crank_checks WHERE checked_at < ?`).run(oneDayAgo); } catch {}
 
     // VACUUM으로 삭제된 공간 실제 회수
-    d.exec('VACUUM');
+    try { d.exec('VACUUM'); } catch {}
+
+    // journal 모드 복원
+    try { d.pragma('journal_mode = WAL'); } catch {}
+    try { d.pragma('synchronous = NORMAL'); } catch {}
+
     console.log('[DB 정리] 완료');
   } catch (e) {
     console.error('[DB 정리] 에러:', e);
