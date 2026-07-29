@@ -732,8 +732,8 @@ export function cleanupDatabase() {
       `).run(row.worker_id, row.worker_id);
     }
 
-    // logs: 3일 이상 된 데이터 삭제
-    const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000;
+    // 1일 이상 된 데이터 삭제
+    const threeDaysAgo = Date.now() - 1 * 24 * 60 * 60 * 1000;
     d.prepare(`DELETE FROM logs WHERE created_at < ?`).run(threeDaysAgo);
     d.prepare(`DELETE FROM worker_logs WHERE created_at < ?`).run(threeDaysAgo);
     d.prepare(`DELETE FROM failed_keywords WHERE created_at < ?`).run(threeDaysAgo);
