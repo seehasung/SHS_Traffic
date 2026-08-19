@@ -721,11 +721,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
           }
           authenticatedWorkerId = worker.id;
 
-          // 기존 연결 끊기
+          // 기존 연결 즉시 정리 (terminate로 강제 종료하여 재연결 루프 방지)
           const oldSocket = workerSockets.get(worker.id);
-          if (oldSocket && oldSocket !== socket && oldSocket.readyState === WebSocket.OPEN) {
-            console.warn(`[Worker WS] 워커 "${worker.name}" (${worker.id}): 기존 연결을 REPLACED 처리합니다 (중복 접속 감지).`);
-            oldSocket.close(4000, 'REPLACED');
+          if (oldSocket && oldSocket !== socket) {
+            console.warn(`[Worker WS] 워커 "${worker.name}" (${worker.id}): 기존 소켓 정리 (새 연결로 교체).`);
+            oldSocket.removeAllListeners();
+            try { oldSocket.terminate(); } catch {}
           }
           workerSockets.set(worker.id, socket);
 
