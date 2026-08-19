@@ -1,8 +1,10 @@
 // SQLite ↔ 도메인 객체 매핑. 한 곳에 모아두면 라우트가 매우 단순해진다.
 import { db } from './db';
+import { dbPath } from './paths';
 import type { Knowledge, NaverAccount, Settings, LogEntry, LogLevel, KeywordGroup, Worker, Product, FailedKeyword, RankCheck, CafeEntry, CRankGroup, CRankKnowledge, CRankCheck } from '@shared/types';
 import { DEFAULT_SETTINGS } from '@shared/types';
 import { uid } from 'uid';
+import * as fs from 'fs';
 
 // ──────────────── workers ────────────────
 function rowToWorker(r: any): Worker {
@@ -291,6 +293,7 @@ function rowToLog(r: any): LogEntry {
   };
 }
 
+let _logsInsertCount = 0;
 export const logsRepo = {
   list(limit = 200): LogEntry[] {
     const rows = db()
@@ -303,11 +306,9 @@ export const logsRepo = {
     const info = db()
       .prepare(`INSERT INTO logs(message, level, progress_count, created_at) VALUES(?, ?, ?, ?)`)
       .run(message, level, progressCount, now);
-    db().prepare(`
-      DELETE FROM logs WHERE id NOT IN (
-        SELECT id FROM logs ORDER BY id DESC LIMIT 1000
-      )
-    `).run();
+    if (++_logsInsertCount % 200 === 0) {
+      db().prepare(`DELETE FROM logs WHERE id NOT IN (SELECT id FROM logs ORDER BY id DESC LIMIT 1000)`).run();
+    }
     return { id: Number(info.lastInsertRowid), message, level, progressCount, createdAt: now };
   },
   clear() {
@@ -350,17 +351,19 @@ export const workerLogsRepo = {
     }
     return rows.reverse().map(rowToWorkerLog);
   },
+  _insertCount: 0 as number,
   append(workerId: string, workerName: string, message: string, level: LogLevel): WorkerLogRow {
     const now = Date.now();
     const info = db()
       .prepare(`INSERT INTO worker_logs(worker_id, worker_name, message, level, created_at) VALUES(?, ?, ?, ?, ?)`)
       .run(workerId, workerName, message, level, now);
-    // 오래된 로그 정리: 워커별 최근 2000건만 유지
-    db().prepare(`
-      DELETE FROM worker_logs WHERE worker_id = ? AND id NOT IN (
-        SELECT id FROM worker_logs WHERE worker_id = ? ORDER BY id DESC LIMIT 2000
-      )
-    `).run(workerId, workerId);
+    if (++this._insertCount % 200 === 0) {
+      db().prepare(`
+        DELETE FROM worker_logs WHERE worker_id = ? AND id NOT IN (
+          SELECT id FROM worker_logs WHERE worker_id = ? ORDER BY id DESC LIMIT 2000
+        )
+      `).run(workerId, workerId);
+    }
     return { id: Number(info.lastInsertRowid), workerId, workerName, message, level, createdAt: now };
   },
   clear(workerId?: string) {
@@ -705,43 +708,53 @@ export const crankChecksRepo = {
 
 // ──────────────── DB 정리 (서버 시작 시 호출) ────────────────
 export function cleanupDatabase() {
-  try {
-    console.log('[DB 정리] 로그 테이블 정리 시작...');
-    const d = db();
+  const p = dbPath();
+  console.log('[DB 정리] 시작... DB 경로:', p);
 
+  // 1차 시도: 로그 테이블만 DROP (데이터 유지)
+  try {
+    const d = db();
     try { d.pragma('journal_mode = MEMORY'); } catch {}
     try { d.pragma('synchronous = OFF'); } catch {}
 
-    // 로그 테이블만 DROP 후 재생성 (나머지 데이터는 유지)
-    try {
-      d.exec(`DROP TABLE IF EXISTS logs`);
-      d.exec(`CREATE TABLE IF NOT EXISTS logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        message TEXT NOT NULL, level TEXT NOT NULL,
-        progress_count INTEGER NOT NULL, created_at INTEGER NOT NULL
-      )`);
-      d.exec(`CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at)`);
-      console.log('[DB 정리] logs 테이블 초기화 완료');
-    } catch (e) { console.error('[DB 정리] logs 초기화 실패:', e); }
+    d.exec(`DROP TABLE IF EXISTS logs`);
+    d.exec(`DROP TABLE IF EXISTS worker_logs`);
 
-    try {
-      d.exec(`DROP TABLE IF EXISTS worker_logs`);
-      d.exec(`CREATE TABLE IF NOT EXISTS worker_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        worker_id TEXT NOT NULL, worker_name TEXT NOT NULL,
-        message TEXT NOT NULL, level TEXT NOT NULL, created_at INTEGER NOT NULL
-      )`);
-      d.exec(`CREATE INDEX IF NOT EXISTS idx_worker_logs_worker_id ON worker_logs(worker_id)`);
-      console.log('[DB 정리] worker_logs 테이블 초기화 완료');
-    } catch (e) { console.error('[DB 정리] worker_logs 초기화 실패:', e); }
+    d.exec(`CREATE TABLE IF NOT EXISTS logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message TEXT NOT NULL, level TEXT NOT NULL,
+      progress_count INTEGER NOT NULL, created_at INTEGER NOT NULL
+    )`);
+    d.exec(`CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at)`);
+
+    d.exec(`CREATE TABLE IF NOT EXISTS worker_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      worker_id TEXT NOT NULL, worker_name TEXT NOT NULL,
+      message TEXT NOT NULL, level TEXT NOT NULL, created_at INTEGER NOT NULL
+    )`);
+    d.exec(`CREATE INDEX IF NOT EXISTS idx_worker_logs_worker_id ON worker_logs(worker_id)`);
 
     try { d.exec('VACUUM'); } catch {}
-
     try { d.pragma('journal_mode = WAL'); } catch {}
     try { d.pragma('synchronous = NORMAL'); } catch {}
 
-    console.log('[DB 정리] 완료');
+    console.log('[DB 정리] 로그 테이블 초기화 완료');
+    return;
   } catch (e) {
-    console.error('[DB 정리] 에러:', e);
+    console.error('[DB 정리] 1차 시도 실패, DB 파일 삭제 후 재생성합니다:', e);
+  }
+
+  // 2차 시도: DB 파일 자체 삭제 (디스크가 완전히 꽉 찬 경우)
+  try {
+    // 기존 DB 연결 닫기
+    try { db().close(); } catch {}
+
+    // DB 파일 및 관련 파일 삭제
+    for (const suffix of ['', '-wal', '-shm', '-journal']) {
+      try { fs.unlinkSync(p + suffix); } catch {}
+    }
+    console.log('[DB 정리] DB 파일 삭제 완료. 서버 시작 시 자동 재생성됩니다.');
+  } catch (e) {
+    console.error('[DB 정리] DB 파일 삭제 실패:', e);
   }
 }
