@@ -3,6 +3,7 @@ import path from 'path';
 import { isEmpty } from 'lodash';
 import { crawlerUtil } from '../utils/crawlerUtil';
 import { getPublicIp } from '../utils/ipUtil';
+import { focusVpnWindow, listTopLevelWindows, sendHotkeyAltP } from '../utils/win32Util';
 
 export type VpnType = 'hi' | 'cool' | 'momo';
 
@@ -339,16 +340,62 @@ class VpnService {
   //  핫키로 IP 변경 (Alt + P)
   // ---------------------------------------------------------------------------
 
+  /**
+   * nut-js 로 Alt+P 를 보낸다.
+   *
+   * 주의할 점:
+   *  - Alt 를 누른 상태로 최소 수십 ms 는 유지해야 프로그램이 조합키로 인식한다.
+   *  - 뗄 때는 반드시 P → Alt 순서여야 한다. Alt 를 먼저 떼면 조합이 깨진다.
+   *  - 이전 실행에서 Alt 가 눌린 채로 남아 있을 수 있어 먼저 정리한다.
+   */
+  private async sendAltPViaNut(): Promise<void> {
+    try {
+      await keyboard.releaseKey(Key.P);
+      await keyboard.releaseKey(Key.LeftAlt);
+    } catch { /* 눌려있지 않았다면 무시 */ }
+
+    await keyboard.pressKey(Key.LeftAlt);
+    await sleep(80);
+    await keyboard.pressKey(Key.P);
+    await sleep(120);
+    await keyboard.releaseKey(Key.P);
+    await sleep(80);
+    await keyboard.releaseKey(Key.LeftAlt);
+  }
+
   async 핫키로IP변경(_userMe: any): Promise<string> {
-    for (let i = 0; i < 10; i++) {
+    const MAX_TRY = 10;
+
+    // VPN 창을 포그라운드로 올려둔다.
+    // 핫키가 전역 등록이 아니거나, Chromium/Electron 창이 Alt 조합을 먼저 삼키는 경우
+    // 이 과정이 없으면 핫키가 VPN 프로그램에 영영 도달하지 않는다.
+    const focused = await focusVpnWindow();
+    if (focused) {
+      crawlerUtil.log(`[VPN] 아이피 변경 프로그램 창을 활성화했습니다: ${focused}`);
+      await crawlerUtil.delay(500);
+    } else {
+      const windows = await listTopLevelWindows();
+      crawlerUtil.log(
+        '[VPN] 아이피 변경 프로그램 창을 찾지 못했습니다. 핫키가 전달되지 않을 수 있습니다.',
+      );
+      if (windows.length > 0) {
+        crawlerUtil.log(`[VPN] 현재 열린 창 목록: ${windows.join(' / ')}`);
+      }
+    }
+
+    for (let i = 0; i < MAX_TRY; i++) {
       crawlerUtil.log('아이피를 변경중입니다.');
 
       const prevIp = await this.getIp();
       crawlerUtil.log(`[디버그] 변경 전 IP: ${prevIp}`);
 
-      await keyboard.releaseKey(Key.LeftAlt, Key.P);
-      await keyboard.pressKey(Key.LeftAlt, Key.P);
-      await keyboard.releaseKey(Key.LeftAlt, Key.P);
+      // 1~2회차는 nut-js, 3회차부터는 Windows 네이티브 SendKeys 도 함께 시도한다.
+      // 두 방식은 입력 주입 경로가 달라서, 한쪽이 막혀도 다른 쪽이 통하는 경우가 있다.
+      await this.sendAltPViaNut();
+      if (i >= 2) {
+        const sent = await sendHotkeyAltP();
+        crawlerUtil.log(`[VPN] SendKeys 보조 핫키 전송 ${sent ? '성공' : '실패'}`);
+      }
 
       // VPN 프로그램이 새 IP 로 라우팅을 완전히 전환할 때까지 대기.
       // 초기 5초 대기 후, IP 가 아직 안 바뀐 것 같으면 추가로 2초씩 4번까지 더 기다리며 재확인.
@@ -370,9 +417,16 @@ class VpnService {
         crawlerUtil.log(`아이피 변경 완료: ${prevIp} -> ${newIp}`);
         this.currentIp = newIp;
         return newIp;
-      } else {
-        crawlerUtil.log(`아이피 변경 재시도 횟수: ${i + 1}회`);
       }
+
+      crawlerUtil.log(`아이피 변경 재시도 횟수: ${i + 1}회`);
+
+      // 핫키를 쉬지 않고 연타하면 VPN 프로그램이 "변경 중" 상태에서 입력을 무시한다.
+      // 재시도 간격을 점점 늘려 프로그램이 이전 요청을 마칠 시간을 준다.
+      await crawlerUtil.delay(Math.min(2000 + i * 1000, 8000));
+
+      // 중간에 다른 창이 포커스를 가져갔을 수 있으므로 주기적으로 다시 올린다.
+      if (i % 3 === 2) await focusVpnWindow();
     }
 
     crawlerUtil.log(
