@@ -198,11 +198,43 @@ class KnowledgeService {
     return {} as any;
   }
 
+  /** 쇼핑 검색 결과 주소의 pagingIndex 를 읽는다. 없으면 1페이지로 본다. */
+  private _getPagingIndex(url: string): number {
+    try {
+      const n = Number(new URL(url).searchParams.get('pagingIndex'));
+      return Number.isInteger(n) && n > 0 ? n : 1;
+    } catch {
+      return 1;
+    }
+  }
+
+  private _buildPagingUrl(url: string, pagingIndex: number): string {
+    const u = new URL(url);
+    u.searchParams.set('pagingIndex', String(pagingIndex));
+    return u.toString();
+  }
+
   private async _clickNextPageInShoppingResultPage(page: Page, setting: any) {
+    const beforeUrl = page.url();
+    const beforePaging = this._getPagingIndex(beforeUrl);
+    const isPc = !beforeUrl.includes('msearch');
+    const itemsSelector = isPc
+      ? '*[class*=basicList_list_basis] > div > div'
+      : 'div[class*=product_list_item]';
+
+    const readFirstItem = () =>
+      page
+        .evaluate((sel: string) => {
+          const items = document.querySelectorAll(sel);
+          return items[0]?.outerHTML?.substring(0, 300) || '';
+        }, itemsSelector)
+        .catch(() => '');
+
+    const firstItemBefore = await readFirstItem();
+
     try {
       await crawlerUtil.waitRandom(page, 1, 2);
 
-      const isPc = !page.url().includes('msearch');
       const nextPageSelector = isPc
         ? '[class*="pagination_btn_page"][class*="active"] + a'
         : '*[class*=paginator] a[class*=active] + *';
@@ -211,20 +243,13 @@ class KnowledgeService {
       await crawlerUtil.waitRandom(page, 2, 3);
 
       await page.waitForSelector(nextPageSelector, { timeout: 5000 });
-
-      const itemsSelector = '*[class*=basicList_list_basis] > div > div';
-      const firstItemBefore = await page.evaluate((sel: string) => {
-        const items = document.querySelectorAll(sel);
-        return items[0]?.outerHTML?.substring(0, 200) || '';
-      }, itemsSelector);
-
       await page.click(nextPageSelector);
       crawlerUtil.log('다음페이지 버튼 클릭');
 
       await page.waitForFunction(
         (sel: string, before: string) => {
           const items = document.querySelectorAll(sel);
-          const firstNow = items[0]?.outerHTML?.substring(0, 200) || '';
+          const firstNow = items[0]?.outerHTML?.substring(0, 300) || '';
           return items.length > 0 && firstNow !== before;
         },
         { timeout: 15000 },
@@ -233,14 +258,29 @@ class KnowledgeService {
       ).catch(() => {});
 
       await crawlerUtil.waitTillHTMLRendered(page);
+    } catch {
+      crawlerUtil.log('다음페이지 버튼을 찾지 못했습니다.');
+    }
 
-      if (!isPc) {
-        await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
-      }
-    } catch (e: any) {
-      crawlerUtil.log('다음페이지 버튼 클릭 실패');
-      console.error(e);
-      throw e;
+    // 버튼을 눌러도 네이버가 같은 페이지를 다시 그려주는 경우가 있다.
+    // pagingIndex 가 실제로 올라갔는지 확인하고, 그대로면 주소를 직접 바꿔 이동한다.
+    if (this._getPagingIndex(page.url()) <= beforePaging) {
+      const nextPage = beforePaging + 1;
+      crawlerUtil.log(`페이지가 넘어가지 않아 ${nextPage}페이지로 직접 이동합니다.`);
+      await crawlerUtil.goto(page, this._buildPagingUrl(beforeUrl, nextPage));
+    }
+
+    if (!isPc) {
+      await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+    }
+    await crawlerUtil.waitTillHTMLRendered(page);
+
+    // 마지막 페이지를 넘기면 네이버는 에러 대신 같은 결과를 계속 돌려준다.
+    // 첫 상품이 그대로면 더 볼 페이지가 없다고 보고 중단한다.
+    const firstItemAfter = await readFirstItem();
+    if (firstItemBefore && firstItemAfter === firstItemBefore) {
+      crawlerUtil.log('페이지를 넘겨도 결과가 같습니다. 마지막 페이지로 판단합니다.');
+      throw new Error('LAST_PAGE_REACHED');
     }
   }
 
@@ -575,7 +615,8 @@ class KnowledgeService {
         }
       }
 
-      crawlerUtil.log(`[${i + 1}/${MAX_PAGES}페이지] 검색 결과 아이템 ${items.length}개 발견, 상품번호 "${itemName}" 검색 중`);
+      const currentPage = this._getPagingIndex(shoppingResultPage!.url());
+      crawlerUtil.log(`[${i + 1}/${MAX_PAGES}회차, 실제 ${currentPage}페이지] 검색 결과 아이템 ${items.length}개 발견, 상품번호 "${itemName}" 검색 중`);
       const findResult = await this.findTargetInProductList(items, isMobile, itemName, setting?.isIncludeAds === 'Y', isPlus);
       const { itemLinkElement, itemElement, itemTotalCount, itemIndex } = findResult;
 
