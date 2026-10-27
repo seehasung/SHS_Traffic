@@ -33,12 +33,11 @@ class CafeService {
       fakeInput?.click();
       await page.waitForSelector('header #query', { visible: true }).catch(() => {});
       await page.type('header #query', keyword, { delay: 100 });
-      const searchBtn = await page.$('.sch_btn_search');
-      await crawlerUtil.clickByElemHandle(page, searchBtn);
+      await crawlerUtil.delay(500);
+      await page.keyboard.press('Enter');
     } else {
       await page.type('input[name="query"]', keyword, { delay: 100 });
-      const searchBtn = await page.$('#search-btn');
-      await crawlerUtil.clickByElemHandle(page, searchBtn);
+      await page.keyboard.press('Enter');
     }
 
     await crawlerUtil.waitRandom(page, 2, 4);

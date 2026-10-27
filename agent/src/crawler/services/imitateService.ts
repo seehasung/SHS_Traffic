@@ -57,9 +57,7 @@ class ImitateService {
         } else {
           await page.waitForSelector('#query');
           await page.type('#query', randomWord, { delay: 100 });
-          await page.waitForSelector('#search-btn');
-          const searchBtn = await page.$('#search-btn');
-          await crawlerUtil.clickByElemHandle(page, searchBtn);
+          await page.keyboard.press('Enter');
         }
 
         await crawlerUtil.waitRandom(page, minWaitTime, maxWaitTime);
@@ -142,7 +140,7 @@ class ImitateService {
       const filteredMenus = await Promise.all(
         menuElements.map(async (el) => {
           const href = await page.evaluate((e: any) => e.getAttribute('href'), el);
-          if (href && !href.includes('map.naver') && !href.includes('veta.naver') && !href.includes('chzzk') && !href.includes('book')) return el;
+          if (href && !href.includes('map.naver') && !href.includes('veta.naver') && !href.includes('chzzk') && !href.includes('comic') && !href.includes('book')) return el;
           return null;
         }),
       );

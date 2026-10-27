@@ -156,6 +156,8 @@ class CrawlerUtil {
           '--enable-popup-blocking',
           '--no-first-run',
           '--no-default-browser-check',
+          // 앱이 관리자 권한이면 크롬이 일반 권한으로 스스로 재시작해 puppeteer 연결이 끊긴다
+          '--do-not-de-elevate',
           naverUserAgent ? `--user-agent=${naverUserAgent}` : null,
           `--blink-settings=imagesEnabled=${(setting as any).showImage !== 'N'}`,
         ]) as string[],
@@ -352,7 +354,7 @@ class CrawlerUtil {
     }
     await page.waitForSelector(selector);
     await Promise.all([page.click(selector), page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 })]);
-    await this.wait(page, 1);
+    await this.wait(page, 3);
   }
 
   async getNewPageByClick(params: {

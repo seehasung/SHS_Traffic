@@ -26,8 +26,7 @@ class KnowledgeService {
       await crawlerUtil.waitTillHTMLRendered(page);
     } else {
       await page.type('input[name="query"]', keyword, { delay: 100 });
-      const searchBtn = await page.$('#search-btn');
-      await crawlerUtil.clickByElemHandle(page, searchBtn);
+      await page.keyboard.press('Enter');
     }
   }
 
@@ -201,14 +200,15 @@ class KnowledgeService {
 
   private async _clickNextPageInShoppingResultPage(page: Page, setting: any) {
     try {
+      await crawlerUtil.waitRandom(page, 1, 2);
+
       const isPc = !page.url().includes('msearch');
       const nextPageSelector = isPc
         ? '[class*="pagination_btn_page"][class*="active"] + a'
         : '*[class*=paginator] a[class*=active] + *';
-      await crawlerUtil.waitRandom(page, 0, 1);
 
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await crawlerUtil.delay(500);
+      await crawlerUtil.waitRandom(page, 2, 3);
 
       await page.waitForSelector(nextPageSelector, { timeout: 5000 });
 
@@ -246,7 +246,7 @@ class KnowledgeService {
 
   private async _findPurchaseItemByPc(browser: Browser, shoppingDetailPage: Page, purchaseName: string, setting: any) {
     for (let i = 0; i < 500; i++) {
-      const linkSelector = '*[class*=productList_list_seller] *[class^=productList_title__]';
+      const linkSelector = '[class*=product_link_seller]';
       await shoppingDetailPage.waitForSelector(linkSelector).catch(() => {});
       const productNumbers = await this.extractProductNumbersBySelector(shoppingDetailPage, linkSelector);
       const linkIndex = productNumbers?.findIndex((x) => x === purchaseName);
@@ -255,7 +255,7 @@ class KnowledgeService {
         await crawlerUtil.scrollBy(shoppingDetailPage, 'normal', 200, 5, 'down');
         await crawlerUtil.wait(shoppingDetailPage, 1);
         try {
-          const purchaseNextPageSelector = '*[class*=productList_seller] *[class*=pagination_now__] + a';
+          const purchaseNextPageSelector = '*[class*=pagination_next]';
           await shoppingDetailPage.waitForSelector(purchaseNextPageSelector);
           await shoppingDetailPage.click(purchaseNextPageSelector);
         } catch {

@@ -27,8 +27,7 @@ class BlogService {
       await crawlerUtil.waitTillHTMLRendered(page);
     } else {
       await page.type('input[name="query"]', keyword, { delay: 100 });
-      const searchBtn = await page.$('#search-btn');
-      await crawlerUtil.clickByElemHandle(page, searchBtn);
+      await page.keyboard.press('Enter');
     }
   }
 

@@ -1,5 +1,5 @@
 import type { Browser, Page } from 'puppeteer-core';
-import { sample, random, shuffle, sampleSize } from 'lodash';
+import { sample, random, shuffle } from 'lodash';
 import { crawlerUtil, type LogFn } from './utils/crawlerUtil';
 import { crawlerService } from './services/crawlerService';
 import { imitateService } from './services/imitateService';
@@ -246,11 +246,34 @@ class CrawlerController {
     await imitateService.randomClickMenuWithScroll({ page: this.page, setting: this.setting, minWaitTimeBeforeScroll: 1, maxWaitTimeBeforeScroll: 2, minWaitTimeAfterScroll: 1, maxWaitTimeAfterScroll: 2 });
   }
 
-  private shuffleKeyword(keyword: string): string {
-    const splitted = keyword.trim().split(/\s+/);
-    const shuffled = shuffle(splitted);
-    const arrayLength = Math.max(shuffled.length - random(1, 2), 1);
-    return sampleSize(shuffled, arrayLength).join(' ');
+  /**
+   * 키워드 규칙에 따라 검색어를 조합한다.
+   *
+   * 쉼표로 구분된 형태 "필수어, 후보1, 후보2, ..., N" 을 받아
+   * 필수어 + 후보 중 랜덤 (N-1)개를 뽑아 섞은 뒤 공백으로 이어붙인다.
+   * 맨 뒤 숫자(N)가 없으면 모든 토큰을 공백으로 잇기만 한다.
+   * 쉼표가 없으면 원본 그대로 쓴다.
+   */
+  private getParsedKeyword(rawKeyword: string): string {
+    const trimmed = rawKeyword?.trim() || '';
+    if (!trimmed.includes(',')) return trimmed;
+
+    const tokens = trimmed.split(',').map((t) => t.trim()).filter(Boolean);
+    if (tokens.length <= 1) return tokens[0] ?? trimmed;
+
+    const count = Number(tokens[tokens.length - 1]);
+    const hasCount = Number.isInteger(count) && count > 0;
+    if (!hasCount) return tokens.join(' ');
+
+    const requiredKeyword = tokens[0];
+    if (count <= 1) return requiredKeyword;
+
+    const candidates = tokens.slice(1, -1);
+    const selected = shuffle(candidates).slice(0, Math.min(count - 1, candidates.length));
+    const result = shuffle([requiredKeyword, ...selected]).join(' ');
+
+    crawlerUtil.log(`검색어 섞기 완료: "${rawKeyword}" -> "${result}"`);
+    return result;
   }
 
   private async _crawl(knowledge: Knowledge, settings: Partial<Settings>, shouldStop: () => boolean) {
@@ -270,7 +293,7 @@ class CrawlerController {
 
     let keyword = knowledge.keyword;
     if ((settings as any).keywordShuffleControlRole === 'Y') {
-      keyword = this.shuffleKeyword(keyword);
+      keyword = this.getParsedKeyword(keyword);
     }
 
     crawlerUtil.log(`"${keyword}"키워드로 검색하여 상품번호: "${knowledge.itemName}"${knowledge.purchaseName ? ', 판매처명: ' + knowledge.purchaseName : ''}을 찾겠습니다.`);
@@ -378,7 +401,7 @@ class CrawlerController {
     const siteUrl = knowledge.siteUrl || knowledge.itemName;
     let keyword = knowledge.keyword;
     if ((settings as any).keywordShuffleControlRole === 'Y') {
-      keyword = this.shuffleKeyword(keyword);
+      keyword = this.getParsedKeyword(keyword);
     }
 
     crawlerUtil.log(`"${keyword}"키워드로 검색하여 URL 또는 제목에 "${siteUrl}"가 포함된 사이트를 찾겠습니다.`);
