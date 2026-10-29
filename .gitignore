@@ -35,8 +35,7 @@ vscode_project/
 # Reference apps (extracted for analysis, not for deployment)
 blog-site-top-exposure/
 _extracted_blog_app/
-_ref_original_*/
-_ref_diff_*.txt
+_ref_*
 
 # Platform tools (ADB binary, too large for git)
 platform-tools/

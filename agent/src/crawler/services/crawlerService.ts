@@ -5,6 +5,7 @@ import { NAVER_URL } from '../constants/urls';
 import { crawlerUtil } from '../utils/crawlerUtil';
 import { adbService } from './adbService';
 import type { Settings, NaverAccount } from '@shared/types';
+import { getProfileKeepLabel, shouldResetBrowserProfile } from '../config/browserPolicy';
 
 class CrawlerService {
   private setting: Partial<Settings> | null = null;
@@ -182,9 +183,13 @@ class CrawlerService {
     return await this.naverLogin(page, naverId, naverPassword);
   }
 
-  async removeCookie(page: Page) {
+  async removeCookie(page: Page, setting?: Partial<Settings>) {
     try {
       if (!page) return;
+      if (!shouldResetBrowserProfile(setting)) {
+        crawlerUtil.log(`[${getProfileKeepLabel(setting)}] 쿠키와 캐시를 유지합니다.`);
+        return;
+      }
       const client = await (page as any).target().createCDPSession();
       await client.send('Network.clearBrowserCookies');
       await client.send('Network.clearBrowserCache');

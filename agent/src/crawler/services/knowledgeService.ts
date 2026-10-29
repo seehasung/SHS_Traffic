@@ -2,8 +2,40 @@ import type { Browser, Page, ElementHandle } from 'puppeteer-core';
 import { isEmpty, shuffle } from 'lodash';
 import { crawlerUtil } from '../utils/crawlerUtil';
 import { NAVER_URL } from '../constants/urls';
+import {
+  isNaverProductLoginRedirect,
+  rethrowProductDestinationFailure,
+  validateProductDestination,
+  validateProductDestinationAfterNavigation,
+} from './productDestination';
+import { getProductDestinationTargetToken, runWithProductDestinationTrace } from './productDestinationTrace';
 
 class KnowledgeService {
+  /** 상품 페이지를 연 뒤 실제로 그 상품에 도착했는지 확인한다. */
+  private async getProductDestination<T extends Page | undefined>(page: T): Promise<T> {
+    const targetToken = getProductDestinationTargetToken(page);
+    return runWithProductDestinationTrace(
+      targetToken,
+      (message) => crawlerUtil.fileLog(message),
+      () =>
+        validateProductDestinationAfterNavigation(
+          page,
+          async (destinationPage) => {
+            await crawlerUtil.waitTillHTMLRendered(destinationPage);
+          },
+          { log: (message) => crawlerUtil.log(message) },
+        ),
+    );
+  }
+
+  // 상품을 누르기 전(통합 검색·쇼핑 목록)에 로그인 화면으로 넘어가도 상품 클릭 뒤와 같은
+  // 로그인 전환 실패로 올려 같은 상품 재시도 경로를 태운다
+  private async assertNotLoginRedirectBeforeProductClick(page: Page | undefined, stage: string) {
+    if (!page || !isNaverProductLoginRedirect(page.url())) return;
+    crawlerUtil.fileLog(`[로그인 전환 감지] ${JSON.stringify({ stage, url: page.url() })}`);
+    await validateProductDestination(page);
+  }
+
   private async _removeLayer({ page }: { page: Page }) {
     await page.evaluate(() => {
       const layer = document.querySelector('.layer_search_tutorial');
@@ -215,6 +247,7 @@ class KnowledgeService {
   }
 
   private async _clickNextPageInShoppingResultPage(page: Page, setting: any) {
+    await this.assertNotLoginRedirectBeforeProductClick(page, 'shoppingListNextPage');
     const beforeUrl = page.url();
     const beforePaging = this._getPagingIndex(beforeUrl);
     const isPc = !beforeUrl.includes('msearch');
@@ -306,7 +339,9 @@ class KnowledgeService {
       }
 
       const linkElemHandle = (await shoppingDetailPage.$$(linkSelector))[linkIndex];
-      const purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingDetailPage, linkElement: linkElemHandle });
+      const purchaseDetailPage = await this.getProductDestination(
+        await crawlerUtil.getNewPageByClick({ browser, page: shoppingDetailPage, linkElement: linkElemHandle }),
+      );
       await purchaseDetailPage?.bringToFront();
       await crawlerUtil.wait(shoppingDetailPage, 3);
       return purchaseDetailPage;
@@ -316,7 +351,7 @@ class KnowledgeService {
 
   private async _handleServiceUnavailable(
     browser: Browser, detailPage: Page, shoppingResultPage: Page,
-    itemLinkElement: ElementHandle<Element>,
+    itemLinkElement: ElementHandle<Element>, expectedProductId?: string,
   ): Promise<Page | undefined> {
     let purchaseDetailPage: Page | undefined = detailPage;
 
@@ -335,7 +370,12 @@ class KnowledgeService {
       await crawlerUtil.log('서비스 접속이 불가합니다. 페이지 닫기 후 재접속하겠습니다.');
       await purchaseDetailPage?.close();
       await shoppingResultPage?.bringToFront();
-      purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage, linkElement: itemLinkElement });
+      purchaseDetailPage = await this.getProductDestination(
+        await crawlerUtil.getNewPageByClick({
+          browser, page: shoppingResultPage, linkElement: itemLinkElement,
+          requireProductTargetBinding: true, expectedProductId,
+        }),
+      );
     }
 
     const isProductNotExist = await purchaseDetailPage?.evaluate(
@@ -387,7 +427,9 @@ class KnowledgeService {
         crawlerUtil.log(`총 상품 ${linkElemHandles.length}개 중 ${linkIndex}번째 항목의 판매처 "${purchaseName}"에 대한 링크를 찾지 못했습니다.`);
       }
 
-      const purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingDetailPage, linkElement: linkElemHandle });
+      const purchaseDetailPage = await this.getProductDestination(
+        await crawlerUtil.getNewPageByClick({ browser, page: shoppingDetailPage, linkElement: linkElemHandle }),
+      );
       if (!purchaseDetailPage) crawlerUtil.log('판매처 상세 페이지를 얻지 못했습니다.');
       await purchaseDetailPage?.bringToFront();
       await crawlerUtil.wait(shoppingDetailPage, 3);
@@ -414,7 +456,9 @@ class KnowledgeService {
     }
 
     const linkElemHandle = linkElemHandles[linkIndex];
-    const purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: totalShoppingDetailPage, linkElement: linkElemHandle });
+    const purchaseDetailPage = await this.getProductDestination(
+      await crawlerUtil.getNewPageByClick({ browser, page: totalShoppingDetailPage, linkElement: linkElemHandle }),
+    );
     await purchaseDetailPage?.bringToFront();
     await crawlerUtil.wait(totalShoppingDetailPage, 3);
     return { totalShoppingDetailPage, purchaseDetailPage };
@@ -452,6 +496,7 @@ class KnowledgeService {
       shoppingTabSelector = '.sds-comps-text';
     }
 
+    await this.assertNotLoginRedirectBeforeProductClick(page, 'searchResult');
     await page.waitForSelector(shoppingTabSelector).catch(() => {});
     const shoppingTabElement = await page.$(shoppingTabSelector);
     if (!shoppingTabElement) throw new Error('쇼핑탭을 찾지 못했습니다.');
@@ -556,12 +601,18 @@ class KnowledgeService {
 
           crawlerUtil.log(`[플러스 스토어에서 타겟상품을 찾았습니다.] 상품번호: ${itemName}, ${findResult.itemIndex}번째 위치`);
           await crawlerUtil.waitRandom(plusStorePage, 10, 13);
-          purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: plusStorePage, linkElement: itemLinkElement });
+          await this.assertNotLoginRedirectBeforeProductClick(plusStorePage, 'plusStoreList');
+          purchaseDetailPage = await this.getProductDestination(
+            await crawlerUtil.getNewPageByClick({
+              browser, page: plusStorePage, linkElement: itemLinkElement,
+              requireProductTargetBinding: true, expectedProductId: itemName,
+            }),
+          );
           await purchaseDetailPage?.bringToFront();
           await crawlerUtil.waitTillHTMLRendered(purchaseDetailPage!);
 
           if (purchaseDetailPage) {
-            purchaseDetailPage = await this._handleServiceUnavailable(browser, purchaseDetailPage, plusStorePage, itemLinkElement);
+            purchaseDetailPage = await this._handleServiceUnavailable(browser, purchaseDetailPage, plusStorePage, itemLinkElement, itemName);
           }
           return { shoppingResultPage, purchaseDetailPage };
         }
@@ -640,12 +691,18 @@ class KnowledgeService {
       if (isFoundTarget && !purchaseName) {
         crawlerUtil.log(`[타겟상품을 찾았습니다.] ${i + 1}번 페이지의 ${itemTotalCount}개의 상품 중 ${itemIndex}번째 상품입니다.`);
         await crawlerUtil.waitRandom(shoppingResultPage!, 10, 13);
-        purchaseDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage!, linkElement: itemLinkElement });
+        await this.assertNotLoginRedirectBeforeProductClick(shoppingResultPage, 'shoppingList');
+        purchaseDetailPage = await this.getProductDestination(
+          await crawlerUtil.getNewPageByClick({
+            browser, page: shoppingResultPage!, linkElement: itemLinkElement,
+            requireProductTargetBinding: true, expectedProductId: itemName,
+          }),
+        );
         await purchaseDetailPage?.bringToFront();
         await crawlerUtil.waitTillHTMLRendered(purchaseDetailPage!);
 
         if (purchaseDetailPage) {
-          purchaseDetailPage = await this._handleServiceUnavailable(browser, purchaseDetailPage, shoppingResultPage!, itemLinkElement);
+          purchaseDetailPage = await this._handleServiceUnavailable(browser, purchaseDetailPage, shoppingResultPage!, itemLinkElement, itemName);
         }
         return { shoppingResultPage, purchaseDetailPage, rankInfo };
       }
@@ -656,13 +713,24 @@ class KnowledgeService {
         await crawlerUtil.waitRandom(shoppingResultPage!, 10, 13);
 
         try {
+          await this.assertNotLoginRedirectBeforeProductClick(shoppingResultPage, 'shoppingList');
           if (userMe.logicType === 'clean' || userMe.logicType === 'hidden') {
-            shoppingDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage!, linkElement: itemLinkElement });
+            shoppingDetailPage = await this.getProductDestination(
+              await crawlerUtil.getNewPageByClick({
+                browser, page: shoppingResultPage!, linkElement: itemLinkElement,
+                requireProductTargetBinding: true, expectedProductId: itemName,
+              }),
+            );
           }
           if (userMe.logicType === 'detail') {
             const thumbnailSelector = isPc ? 'a[class^=thumbnail_thumb__]' : '*[class*=_img_area__] img';
             const thumbnailElement = await itemElement?.$(thumbnailSelector);
-            shoppingDetailPage = await crawlerUtil.getNewPageByClick({ browser, page: shoppingResultPage!, linkElement: thumbnailElement });
+            shoppingDetailPage = await this.getProductDestination(
+              await crawlerUtil.getNewPageByClick({
+                browser, page: shoppingResultPage!, linkElement: thumbnailElement,
+                requireProductTargetBinding: true, expectedProductId: itemName,
+              }),
+            );
           }
 
           if (isPc && shoppingDetailPage) {
@@ -717,6 +785,7 @@ class KnowledgeService {
             throw new Error('판매처가 입력 되었으나, 페이지 세팅값(PC/MOBILE)이 제대로 설정되어 있지 않습니다.');
           }
         } catch (e) {
+          rethrowProductDestinationFailure(e);
           console.error(e);
         }
         throw new Error('판매처 이름이 올바르게 입력되지 않아서 작동을 중지합니다.');

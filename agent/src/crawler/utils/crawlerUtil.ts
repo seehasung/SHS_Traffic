@@ -6,51 +6,76 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { execSync } from 'child_process';
-import type { Settings } from '@shared/types';
-
-function getUserDataDir(): string {
-  try {
-    const electron = require('electron');
-    const appObj = electron.app || electron.remote?.app;
-    if (appObj) {
-      return path.join(appObj.getPath('userData'), 'myUserDataDir');
-    }
-  } catch {
-    /* not in electron */
-  }
-  return path.join(os.tmpdir(), 'shs_traffic_userdata');
-}
+import type { BrowserType, Settings } from '@shared/types';
+import {
+  findBrowserPath,
+  getBrowserProfileDirectory,
+  getHeadlessLaunchOptions,
+  getProfileKeepLabel,
+  shouldResetBrowserProfile,
+} from '../config/browserPolicy';
+import { isClickedTargetBindingError, openLinkInBoundPage } from './clickedTargetBinding';
 
 export type LogFn = (message: string) => void;
 
-function findChromePath(): string | null {
-  if (process.platform === 'win32') {
-    const candidates = [
-      path.join(process.env['PROGRAMFILES'] || '', 'Google/Chrome/Application/chrome.exe'),
-      path.join(process.env['PROGRAMFILES(X86)'] || '', 'Google/Chrome/Application/chrome.exe'),
-      path.join(process.env['LOCALAPPDATA'] || '', 'Google/Chrome/Application/chrome.exe'),
-    ];
-    for (const p of candidates) {
-      if (fs.existsSync(p)) return p;
-    }
-  }
-  if (process.platform === 'darwin') {
-    const p = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-    if (fs.existsSync(p)) return p;
-  }
-  if (process.platform === 'linux') {
-    for (const name of ['google-chrome-stable', 'google-chrome', 'chromium-browser', 'chromium']) {
-      const result = shell.which(name);
-      if (result) return result.toString();
-    }
-  }
-  return null;
+/**
+ * 클릭 후 새로 열리는 첫 탭을 기다린다.
+ * 팝업이 차단되거나 클릭이 무시되면 영원히 대기하게 되므로 반드시 시한을 둔다.
+ */
+export function openFirstTargetPageWithTimeout({
+  browser,
+  click,
+  timeoutMs = 15000,
+}: {
+  browser: Browser;
+  click: () => Promise<unknown>;
+  timeoutMs?: number;
+}): Promise<Page | undefined> {
+  return new Promise<Page | undefined>((resolve, reject) => {
+    let settled = false;
+    let candidateSelected = false;
+    let timer: NodeJS.Timeout | undefined;
+
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      browser.off('targetcreated', onTargetCreated);
+      browser.off('disconnected', onBrowserDisconnected);
+    };
+    const settleResolve = (page?: Page) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(page);
+    };
+    const settleReject = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const onTargetCreated = async (target: any) => {
+      if (candidateSelected || settled) return;
+      candidateSelected = true;
+      try {
+        settleResolve((await target.page()) || undefined);
+      } catch (error: any) {
+        settleReject(error);
+      }
+    };
+    const onBrowserDisconnected = () => settleReject(new Error('LEGACY_NEW_PAGE_BROWSER_DISCONNECTED'));
+
+    browser.on('targetcreated', onTargetCreated);
+    browser.on('disconnected', onBrowserDisconnected);
+    timer = setTimeout(() => settleReject(new Error('LEGACY_NEW_PAGE_TIMEOUT')), timeoutMs);
+
+    void Promise.resolve().then(click).catch(settleReject);
+  });
 }
 
 class CrawlerUtil {
   private _log: LogFn = console.log;
   private isWaiting = false;
-  private userDataDirPath = getUserDataDir();
+  private userDataDirPath = getBrowserProfileDirectory();
 
   setLogger(fn: LogFn) {
     this._log = fn;
@@ -60,11 +85,21 @@ class CrawlerUtil {
     this._log(message);
   }
 
-  private killChromeProcessesUsingDir() {
+  /** 진단용 상세 로그. 작업 화면을 어지럽히지 않도록 파일/콘솔에만 남긴다. */
+  fileLog(message: string) {
+    try {
+      const log = require('electron-log');
+      (log.default || log).info(message);
+    } catch {
+      console.log(message);
+    }
+  }
+
+  private killChromeProcessesUsingDir(userDataDirPath: string) {
     if (process.platform !== 'win32') return;
     try {
       execSync(
-        `wmic process where "name='chrome.exe' and CommandLine like '%${this.userDataDirPath.replace(/\\/g, '\\\\')}%'" call terminate`,
+        `wmic process where "name='chrome.exe' and CommandLine like '%${userDataDirPath.replace(/\\/g, '\\\\')}%'" call terminate`,
         { stdio: 'ignore', timeout: 10000 },
       );
     } catch {
@@ -72,11 +107,11 @@ class CrawlerUtil {
     }
   }
 
-  private removeChromeLockFiles() {
-    if (!fs.existsSync(this.userDataDirPath)) return;
+  private removeChromeLockFiles(userDataDirPath: string) {
+    if (!fs.existsSync(userDataDirPath)) return;
     const lockFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket', 'lockfile'];
     for (const lf of lockFiles) {
-      const p = path.join(this.userDataDirPath, lf);
+      const p = path.join(userDataDirPath, lf);
       try {
         if (fs.existsSync(p)) fs.rmSync(p, { force: true });
       } catch {
@@ -85,37 +120,40 @@ class CrawlerUtil {
     }
   }
 
-  async initializeUserDataDir() {
+  /** 초기화에 성공했는지 돌려준다. 실패는 로그만 남기고 호출부가 판단한다. */
+  async initializeUserDataDir(userDataDirPath: string = this.userDataDirPath): Promise<boolean> {
     try {
       this.log('인터넷 사용기록 폴더 세팅중..');
-      this.killChromeProcessesUsingDir();
+      this.killChromeProcessesUsingDir(userDataDirPath);
       await this.delay(1000);
 
-      if (fs.existsSync(this.userDataDirPath)) {
+      if (fs.existsSync(userDataDirPath)) {
         let deleted = false;
         for (let attempt = 0; attempt < 5; attempt++) {
           try {
-            fs.rmSync(this.userDataDirPath, { recursive: true, force: true });
+            fs.rmSync(userDataDirPath, { recursive: true, force: true });
             deleted = true;
             break;
           } catch {
             if (attempt < 4) {
               this.log(`폴더 삭제 재시도 (${attempt + 1}/5)...`);
-              this.killChromeProcessesUsingDir();
+              this.killChromeProcessesUsingDir(userDataDirPath);
               await this.delay(2000);
             }
           }
         }
         if (!deleted) {
           this.log('폴더 삭제 실패 - lock 파일만 제거하고 진행');
-          this.removeChromeLockFiles();
+          this.removeChromeLockFiles(userDataDirPath);
         }
       }
-      fs.mkdirSync(this.userDataDirPath, { recursive: true });
+      fs.mkdirSync(userDataDirPath, { recursive: true });
       this.log('인터넷 사용기록 폴더 세팅 완료');
+      return true;
     } catch (e: any) {
       console.error('인터넷 사용기록 폴더 세팅 중 에러 발생 ' + e);
-      this.removeChromeLockFiles();
+      this.removeChromeLockFiles(userDataDirPath);
+      return false;
     }
   }
 
@@ -130,10 +168,11 @@ class CrawlerUtil {
     }
   }
 
-  getChromePath(): string {
-    const p = findChromePath();
-    if (!p) throw new Error('Chrome을 찾을 수 없습니다. Chrome 브라우저를 설치해주세요.');
-    this.log('크롬 경로: ' + p);
+  getChromePath(browserType: BrowserType = 'chrome'): string {
+    const p = findBrowserPath(browserType);
+    const label = browserType === 'edge' ? 'Edge' : '크롬';
+    if (!p) throw new Error(`${label}을 찾을 수 없습니다. ${label} 브라우저를 설치해주세요.`);
+    this.log(`${label} 경로: ` + p);
     return p;
   }
 
@@ -143,13 +182,20 @@ class CrawlerUtil {
     naverUserAgent?: string,
   ): Promise<{ browser: Browser; page: Page } | undefined> {
     try {
-      await this.initializeUserDataDir();
+      const userDataDirPath = getBrowserProfileDirectory(setting.browserType);
+      if (shouldResetBrowserProfile(setting)) {
+        await this.initializeUserDataDir(userDataDirPath);
+      } else {
+        this.log(`[${getProfileKeepLabel(setting)}] 기존 브라우저 프로필과 쿠키를 유지합니다.`);
+        fs.mkdirSync(userDataDirPath, { recursive: true });
+      }
       await this.flushDns();
 
+      const headlessOptions = getHeadlessLaunchOptions(setting);
       const browser = await puppeteer.launch({
-        headless: setting.showBrowser === 'N' as any,
+        headless: headlessOptions.headless as any,
         devtools: false,
-        userDataDir: path.resolve(this.userDataDirPath),
+        userDataDir: path.resolve(userDataDirPath),
         executablePath: chromePath,
         args: compact([
           '--window-size=980,1020',
@@ -160,6 +206,7 @@ class CrawlerUtil {
           '--do-not-de-elevate',
           naverUserAgent ? `--user-agent=${naverUserAgent}` : null,
           `--blink-settings=imagesEnabled=${(setting as any).showImage !== 'N'}`,
+          ...headlessOptions.args,
         ]) as string[],
         ignoreDefaultArgs: ['--enable-automation'],
         defaultViewport: { width: 980, height: 900 },
@@ -363,9 +410,12 @@ class CrawlerUtil {
     selector?: string;
     linkElement?: ElementHandle<Element> | null;
     setting?: any;
+    /** 상품 링크일 때 켠다. 새 탭이 정말 이 링크의 결과인지 검증한다. */
+    requireProductTargetBinding?: boolean;
+    expectedProductId?: string;
   }): Promise<Page | undefined> {
+    const { browser, page, selector, linkElement, requireProductTargetBinding = false, expectedProductId } = params;
     try {
-      const { browser, page, selector, linkElement } = params;
       let link = linkElement;
       if (selector) {
         await page.waitForSelector(selector);
@@ -376,31 +426,42 @@ class CrawlerUtil {
         return undefined;
       }
 
-      // 새 탭이 안 열리는 경우(클릭이 무시되거나 팝업 차단 등) 영원히 대기하지 않도록 timeout 적용.
-      const NEW_PAGE_TIMEOUT_MS = 15000;
-      let onTargetCreated: ((target: any) => void) | null = null;
-      const newPagePromise = new Promise<Page | null>((resolve) => {
-        const timer = setTimeout(() => {
-          if (onTargetCreated) browser.off('targetcreated', onTargetCreated);
-          this.log(`새 탭이 ${NEW_PAGE_TIMEOUT_MS / 1000}초 내에 열리지 않았습니다 → 다음 단계로 진행합니다.`);
-          resolve(null);
-        }, NEW_PAGE_TIMEOUT_MS);
-        onTargetCreated = (target: any) => {
-          clearTimeout(timer);
-          Promise.resolve(target.page()).then(resolve, () => resolve(null));
-        };
-        browser.once('targetcreated', onTargetCreated);
-      });
-      await page.evaluateHandle((el: any) => { el.target = '_blank'; }, link);
-      await link.click();
-      const newPage = await newPagePromise;
+      let newPage: Page | undefined;
+      if (requireProductTargetBinding) {
+        const waitingLogTimer = setTimeout(
+          () => this.log('새 탭이 선택한 상품인지 확인하는 중입니다. 최대 1분까지 기다립니다.'),
+          10000,
+        );
+        try {
+          newPage = (
+            await openLinkInBoundPage({
+              browser,
+              sourcePage: page,
+              link,
+              expectedProductId,
+              diagnosticWriter: (message) => this.fileLog(message),
+            })
+          ).page;
+        } finally {
+          clearTimeout(waitingLogTimer);
+        }
+      } else {
+        await page.evaluateHandle((el: any) => { el.target = '_blank'; }, link);
+        const clickTarget = link;
+        newPage = await openFirstTargetPageWithTimeout({ browser, click: () => clickTarget.click() });
+      }
 
       if (!newPage) {
-        this.log('새로운 페이지를 열지 못했습니다.');
+        this.log('새로운 페이지를 열지 못했습니다. 기존 페이지: ' + page.url());
         return undefined;
       }
 
       await newPage.bringToFront();
+      if (requireProductTargetBinding) {
+        this.fileLog('선택한 상품 링크와 새 페이지 결합을 확인했습니다.');
+      } else {
+        this.fileLog('새로운 페이지 URL: ' + newPage.url());
+      }
       newPage.on('dialog', async (dialog) => {
         if (dialog.message().includes('로그인')) return;
         this.log('얼럿창이 닫혔습니다. 메시지: ' + dialog.message());
@@ -408,6 +469,10 @@ class CrawlerUtil {
       });
       return newPage;
     } catch (e: any) {
+      if (isClickedTargetBindingError(e)) {
+        this.log('클릭으로 열린 페이지를 선택한 링크와 결합하지 못했습니다.');
+        throw new Error('PRODUCT_DESTINATION_UNSETTLED');
+      }
       this.log('링크를 클릭해서 새로운 탭을 열지 못했습니다.\n\n에러 메세지: ' + e?.message);
       return undefined;
     }

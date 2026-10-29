@@ -4,6 +4,7 @@ import {
   Button,
   Divider,
   FormControl,
+  FormHelperText,
   FormLabel,
   Heading,
   HStack,
@@ -36,13 +37,18 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) {
   return (
     <FormControl>
       <FormLabel fontSize="sm" mb={1}>
         {label}
       </FormLabel>
       {children}
+      {help && (
+        <FormHelperText fontSize="xs" mt={1}>
+          {help}
+        </FormHelperText>
+      )}
     </FormControl>
   );
 }
@@ -164,11 +170,44 @@ function SettingsForm({ mode }: { mode: SettingsMode }) {
               </RadioGroup>
             </Field>
 
+            <Field label="사용 브라우저">
+              <RadioGroup value={s.browserType ?? 'chrome'} onChange={(v) => set('browserType', v as Settings['browserType'])}>
+                <HStack spacing={5}>
+                  <Radio value="chrome">크롬</Radio>
+                  <Radio value="edge">엣지</Radio>
+                </HStack>
+              </RadioGroup>
+            </Field>
+
             <Field label="크롬 브라우저">
               <RadioGroup value={s.showBrowser ?? 'Y'} onChange={(v) => set('showBrowser', v as Settings['showBrowser'])}>
                 <HStack spacing={5}>
                   <Radio value="Y">열기</Radio>
                   <Radio value="N">열지않음</Radio>
+                </HStack>
+              </RadioGroup>
+            </Field>
+
+            <Field label="헤드리스 방식" help="'설정 따름'이면 위의 브라우저 열기 설정을 그대로 씁니다.">
+              <RadioGroup value={s.headlessMode ?? 'auto'} onChange={(v) => set('headlessMode', v === 'auto' ? undefined : (v as Settings['headlessMode']))}>
+                <HStack spacing={5}>
+                  <Radio value="auto">설정 따름</Radio>
+                  <Radio value="new">새 방식</Radio>
+                  <Radio value="old">구 방식</Radio>
+                  <Radio value="visible">항상 표시</Radio>
+                </HStack>
+              </RadioGroup>
+            </Field>
+
+            <Field label="브라우저 프로필" help="'설정 따름'이면 작업 방식(일반/테스트) 설정을 그대로 씁니다.">
+              <RadioGroup
+                value={s.browserProfilePolicy ?? 'auto'}
+                onChange={(v) => set('browserProfilePolicy', v === 'auto' ? undefined : (v as Settings['browserProfilePolicy']))}
+              >
+                <HStack spacing={5}>
+                  <Radio value="auto">설정 따름</Radio>
+                  <Radio value="fresh">매번 초기화</Radio>
+                  <Radio value="keep">쿠키·캐시 유지</Radio>
                 </HStack>
               </RadioGroup>
             </Field>

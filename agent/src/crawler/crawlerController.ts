@@ -8,7 +8,20 @@ import { blogService } from './services/blogService';
 import { blogRankService } from './services/blogRankService';
 import { cafeService } from './services/cafeService';
 import { NAVER_URL } from './constants/urls';
+import { getCrawlerFailureCode } from './services/productDestination';
 import type { Knowledge, NaverAccount, Settings, CRankKnowledge } from '@shared/types';
+
+const CRAWLER_FAILURE_MESSAGES: Record<string, string> = {
+  NAVER_PRODUCT_LOGIN_REDIRECT: '상품 페이지 대신 네이버 로그인 화면으로 넘어갔습니다.',
+  PRODUCT_DESTINATION_UNSETTLED: '상품 페이지에 도착하지 못했습니다.',
+  BROWSER_START_FAILED: '브라우저를 띄우지 못했습니다.',
+};
+
+function describeCrawlerFailure(error: any): string {
+  const code = getCrawlerFailureCode(error);
+  const known = code ? CRAWLER_FAILURE_MESSAGES[code] : undefined;
+  return known ? `${known} (${code})` : error?.message;
+}
 
 export interface FailedKeywordInfo {
   knowledgeId: string;
@@ -95,7 +108,7 @@ class CrawlerController {
       return;
     }
 
-    this.chromePath = crawlerUtil.getChromePath();
+    this.chromePath = crawlerUtil.getChromePath(settings.browserType);
 
     const activeKnowledges = knowledges.filter((k) => (k as any).isActive !== false);
     const shuffledKnowledges = shuffle(activeKnowledges);
@@ -126,7 +139,7 @@ class CrawlerController {
       } catch (e: any) {
         await this.close().catch(() => {});
         if (e.message === 'CANCELLED' || e.message === 'VPN_CONNECTION_FAILED') throw e;
-        logFn(`[상위로직 ${i + 1}번째에서 오류 발생 — 다음 사이클로 넘어갑니다] ${e.message}`);
+        logFn(`[상위로직 ${i + 1}번째에서 오류 발생 — 다음 사이클로 넘어갑니다] ${describeCrawlerFailure(e)}`);
       } finally {
         if (shouldStop()) return;
       }
@@ -546,7 +559,7 @@ class CrawlerController {
       crawlerUtil.log('마지막 서핑 과정에서 오류가 발생했습니다. ' + e.message);
     }
 
-    if (this.page) await crawlerService.removeCookie(this.page);
+    if (this.page) await crawlerService.removeCookie(this.page, this.setting);
     await this.close();
   }
 
@@ -624,7 +637,7 @@ class CrawlerController {
     if (shouldStop()) throw new Error('CANCELLED');
 
     await this._imitateByCommon(shouldStop);
-    if (this.page) await crawlerService.removeCookie(this.page);
+    if (this.page) await crawlerService.removeCookie(this.page, this.setting);
     await this.close();
   }
 
@@ -809,7 +822,7 @@ class CrawlerController {
       crawlerUtil.log('C랭크 크롤링 오류: ' + e.message);
     }
 
-    if (this.page) await crawlerService.removeCookie(this.page);
+    if (this.page) await crawlerService.removeCookie(this.page, this.setting);
     await this.close();
   }
 

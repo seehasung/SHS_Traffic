@@ -54,6 +54,12 @@ export interface NaverAccount {
   userAgent?: string;
 }
 
+export type BrowserType = 'chrome' | 'edge';
+/** 'new' = --headless=new, 'old' = 구 헤드리스, 'visible' = 항상 표시. */
+export type HeadlessMode = 'new' | 'old' | 'visible';
+/** 'fresh' = 매번 초기화, 'keep' = 쿠키·캐시 유지. */
+export type BrowserProfilePolicy = 'fresh' | 'keep';
+
 /** 작업 설정. 기존 SettingModel 의 핵심 필드를 단순화. */
 export interface Settings {
   pageType: PageType;
@@ -70,6 +76,12 @@ export interface Settings {
   scrollSpeed?: 'slow' | 'normal' | 'fast';
   showBrowser?: YN;
   showImage?: YN;
+  /** 사용할 브라우저. 비우면 크롬. */
+  browserType?: BrowserType;
+  /** 헤드리스 방식. 비우면 showBrowser 설정을 따른다. */
+  headlessMode?: HeadlessMode;
+  /** 브라우저 프로필(쿠키·캐시) 처리. 비우면 테스트모드 설정을 따른다. */
+  browserProfilePolicy?: BrowserProfilePolicy;
   macAddressChange?: YN;
   storeType?: 'normal' | 'plus' | 'special';
   isIncludeAds?: YN;

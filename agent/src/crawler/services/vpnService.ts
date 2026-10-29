@@ -17,8 +17,19 @@ interface VpnConnectParams {
 class VpnService {
   currentIp = '';
 
+  // 조회가 길어지면 IP 변경 재시도 주기가 통째로 밀리므로 전체 시한을 둔다
   private getIp = async (): Promise<string> => {
-    return getPublicIp();
+    let deadline: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        getPublicIp(5000),
+        new Promise<never>((_, reject) => {
+          deadline = setTimeout(() => reject(new Error('PUBLIC IP LOOKUP TIMEOUT')), 7000);
+        }),
+      ]);
+    } finally {
+      if (deadline) clearTimeout(deadline);
+    }
   };
 
   checkReady(): boolean {
