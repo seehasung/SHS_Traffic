@@ -99,7 +99,7 @@ function Authed({
           <Route path="/knowledges" element={<KnowledgesPage isAdmin={isAdmin} />} />
           <Route path="/crank" element={<CRankPage />} />
           <Route path="/naver-accounts" element={<NaverAccountsPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings" element={<SettingsPage isAdmin={isAdmin} />} />
           {isAdmin && <Route path="/workers" element={<WorkersPage />} />}
           {isAdmin && <Route path="/products" element={<ProductsPage />} />}
           {isAdmin && <Route path="/cafe-manage" element={<CafeManagePage />} />}

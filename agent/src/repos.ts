@@ -61,6 +61,11 @@ export const workersRepo = {
   saveSettings(workerId: string, settings: Settings) {
     db().prepare(`UPDATE workers SET settings_override = ? WHERE id = ?`).run(JSON.stringify(settings), workerId);
   },
+  /** 모든 워커의 개별 설정을 지워 호스트 설정을 따르게 한다. 지워진 개수를 돌려준다. */
+  clearAllSettings(): number {
+    const result = db().prepare(`UPDATE workers SET settings_override = NULL WHERE settings_override IS NOT NULL`).run();
+    return result.changes;
+  },
 };
 
 // ──────────────── products ────────────────

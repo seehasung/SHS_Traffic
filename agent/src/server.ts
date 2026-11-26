@@ -418,8 +418,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
       return res.json({ settings: req.body });
     }
     const saved = settingsRepo.saveByMode(mode, req.body);
+    // 관리자 저장은 항상 모든 계정에 적용한다. 워커가 따로 저장해 둔 개별 설정을 지워야
+    // 그 워커도 호스트 설정을 따른다.
+    const clearedWorkerCount = workersRepo.clearAllSettings();
     broadcastConfigToAllWorkers();
-    res.json({ settings: saved });
+    res.json({ settings: saved, clearedWorkerCount });
   });
 
   // ──────────────── runner (로컬 실행용, 호환 유지) ────────────────

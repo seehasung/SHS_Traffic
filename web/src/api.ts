@@ -91,7 +91,8 @@ export const api = {
   },
   settings: {
     get: (mode?: 'shopping' | 'blog' | 'crank') => call<{ settings: Settings }>('GET', `${API.settings}${mode ? `?mode=${mode}` : ''}`).then((r) => r.settings),
-    save: (s: Settings, mode?: 'shopping' | 'blog' | 'crank') => call<{ settings: Settings }>('PUT', `${API.settings}${mode ? `?mode=${mode}` : ''}`, s).then((r) => r.settings),
+    save: (s: Settings, mode?: 'shopping' | 'blog' | 'crank') =>
+      call<{ settings: Settings; clearedWorkerCount?: number }>('PUT', `${API.settings}${mode ? `?mode=${mode}` : ''}`, s),
   },
   runner: {
     status: () => call<{ snapshot: RunnerSnapshot }>('GET', API.runnerStatus).then((r) => r.snapshot),

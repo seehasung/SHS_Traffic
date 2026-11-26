@@ -53,7 +53,7 @@ function Field({ label, help, children }: { label: string; help?: string; childr
   );
 }
 
-function SettingsForm({ mode }: { mode: SettingsMode }) {
+function SettingsForm({ mode, isAdmin }: { mode: SettingsMode; isAdmin: boolean }) {
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -69,9 +69,16 @@ function SettingsForm({ mode }: { mode: SettingsMode }) {
   const save = async () => {
     setBusy(true);
     try {
-      const next = await api.settings.save(s, mode);
+      const { settings: next, clearedWorkerCount } = await api.settings.save(s, mode);
       setS(next);
-      toast({ title: '저장되었습니다', status: 'success', position: 'top' });
+      toast({
+        title: isAdmin ? '모든 계정에 적용되었습니다' : '저장되었습니다',
+        description: isAdmin && clearedWorkerCount
+          ? `워커 ${clearedWorkerCount}대가 따로 저장해 둔 설정을 지우고 이 설정으로 맞췄습니다.`
+          : undefined,
+        status: 'success',
+        position: 'top',
+      });
     } catch (e: any) {
       toast({ title: e?.message ?? String(e), status: 'error', position: 'top' });
     } finally {
@@ -395,9 +402,16 @@ function SettingsForm({ mode }: { mode: SettingsMode }) {
           )}
 
           {/* ── 저장 버튼 ── */}
-          <HStack justify="flex-end" pt={2}>
-            <Button onClick={save} colorScheme="blue" size="lg" px={10} isLoading={busy}>
-              저장하기
+          <HStack justify="flex-end" align="center" pt={2} spacing={4}>
+            {isAdmin && (
+              <Text fontSize="xs" color="gray.500" textAlign="right">
+                저장하면 모든 워커 계정에 즉시 적용됩니다.
+                <br />
+                워커가 따로 저장해 둔 설정은 지워지고 이 설정을 따릅니다.
+              </Text>
+            )}
+            <Button onClick={save} colorScheme="blue" size="lg" px={10} isLoading={busy} flexShrink={0}>
+              {isAdmin ? '모든 계정에 저장' : '저장하기'}
             </Button>
           </HStack>
         </Stack>
@@ -405,7 +419,7 @@ function SettingsForm({ mode }: { mode: SettingsMode }) {
   );
 }
 
-export default function SettingsPage() {
+export default function SettingsPage({ isAdmin = false }: { isAdmin?: boolean }) {
   return (
     <Stack spacing={6}>
       <Heading size="md">작업 설정</Heading>
@@ -417,13 +431,13 @@ export default function SettingsPage() {
         </TabList>
         <TabPanels>
           <TabPanel px={0}>
-            <SettingsForm mode="shopping" />
+            <SettingsForm mode="shopping" isAdmin={isAdmin} />
           </TabPanel>
           <TabPanel px={0}>
-            <SettingsForm mode="blog" />
+            <SettingsForm mode="blog" isAdmin={isAdmin} />
           </TabPanel>
           <TabPanel px={0}>
-            <SettingsForm mode="crank" />
+            <SettingsForm mode="crank" isAdmin={isAdmin} />
           </TabPanel>
         </TabPanels>
       </Tabs>
