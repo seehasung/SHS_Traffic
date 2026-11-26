@@ -241,6 +241,21 @@ function SettingsForm({ mode, isAdmin }: { mode: SettingsMode; isAdmin: boolean 
               </RadioGroup>
             </Field>
 
+            <Field
+              label="상품 옵션 랜덤 선택"
+              help="정밀·히든 로직에서 상세페이지 옵션을 하나씩 골라봅니다. 구매나 장바구니는 누르지 않습니다."
+            >
+              <RadioGroup
+                value={s.selectProductOption ?? 'Y'}
+                onChange={(v) => set('selectProductOption', v as Settings['selectProductOption'])}
+              >
+                <HStack spacing={5}>
+                  <Radio value="Y">선택함</Radio>
+                  <Radio value="N">선택안함</Radio>
+                </HStack>
+              </RadioGroup>
+            </Field>
+
             <Field label="광고상품 클릭">
               <RadioGroup value={s.isIncludeAds ?? 'Y'} onChange={(v) => set('isIncludeAds', v as Settings['isIncludeAds'])}>
                 <HStack spacing={5}>

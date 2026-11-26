@@ -85,6 +85,8 @@ export interface Settings {
   macAddressChange?: YN;
   storeType?: 'normal' | 'plus' | 'special';
   isIncludeAds?: YN;
+  /** 상세페이지에서 상품 옵션을 랜덤으로 선택할지. 비우면 선택함. */
+  selectProductOption?: YN;
   shoppingRandomSearch?: YN;
   vpnType?: 'hi' | 'cool' | 'momo';
   maxPages?: number;

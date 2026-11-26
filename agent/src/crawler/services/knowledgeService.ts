@@ -9,6 +9,7 @@ import {
   validateProductDestinationAfterNavigation,
 } from './productDestination';
 import { getProductDestinationTargetToken, runWithProductDestinationTrace } from './productDestinationTrace';
+import { selectRandomProductOptions } from './productOptionService';
 
 class KnowledgeService {
   /** 상품 페이지를 연 뒤 실제로 그 상품에 도착했는지 확인한다. */
@@ -832,6 +833,7 @@ class KnowledgeService {
     await this._clickSmartStoreMoreButton(page);
     const { totalScrollHeight, oneHalfScrollHeight, oneThirdScrollHeight } = await this._measurePageHeight(page, setting, isTestMode);
 
+    await this._selectProductOptionRandom(page, setting);
     await this._clickProductMenuRandom({ page, isMobile, scrollHeight: oneThirdScrollHeight });
     await crawlerUtil.scrollRandom(page, totalScrollHeight, 4, 2, 3);
 
@@ -858,6 +860,7 @@ class KnowledgeService {
     const { totalScrollHeight, oneHalfScrollHeight, oneThirdScrollHeight } = await this._measurePageHeight(page, setting, isTestMode);
 
     await crawlerUtil.키워드위치로포커스이동(page, keyword);
+    await this._selectProductOptionRandom(page, setting);
     await crawlerUtil.scrollRandom(page, totalScrollHeight, 4, 2, 3);
 
     crawlerUtil.log(`[1차 반영] ${minWaitTime1}~${maxWaitTime1}초 랜덤체류`);
@@ -898,6 +901,11 @@ class KnowledgeService {
       await menuItem.click().catch(console.error);
       await crawlerUtil.delay(500);
     }
+  }
+
+  private async _selectProductOptionRandom(page: Page, setting: any) {
+    if (setting?.selectProductOption === 'N') return;
+    await selectRandomProductOptions(page);
   }
 
   private async _clickSmartStoreMoreButton(page: Page) {
